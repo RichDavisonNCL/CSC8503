@@ -1,5 +1,5 @@
 #pragma once
-#include "..\CSC8503Common\GameObject.h"
+#include "GameObject.h"
 
 namespace NCL {
     namespace CSC8503 {

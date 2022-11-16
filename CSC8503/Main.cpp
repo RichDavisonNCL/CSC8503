@@ -1,28 +1,28 @@
-#include "../../Common/Window.h"
+#include "Window.h"
 
-#include "../CSC8503Common/Debug.h"
+#include "Debug.h"
 
-#include "../CSC8503Common/StateMachine.h"
-#include "../CSC8503Common/StateTransition.h"
-#include "../CSC8503Common/State.h"
+#include "StateMachine.h"
+#include "StateTransition.h"
+#include "State.h"
 
-#include "../CSC8503Common/GameServer.h"
-#include "../CSC8503Common/GameClient.h"
+#include "GameServer.h"
+#include "GameClient.h"
 
-#include "../CSC8503Common/NavigationGrid.h"
-#include "../CSC8503Common/NavigationMesh.h"
+#include "NavigationGrid.h"
+#include "NavigationMesh.h"
 
 #include "TutorialGame.h"
 #include "NetworkedGame.h"
 
-#include "../CSC8503Common/PushdownMachine.h"
+#include "PushdownMachine.h"
 
-#include "../CSC8503Common/PushdownState.h"
+#include "PushdownState.h"
 
-#include "../CSC8503Common/BehaviourNode.h"
-#include "../CSC8503Common/BehaviourSelector.h"
-#include "../CSC8503Common/BehaviourSequence.h"
-#include "../CSC8503Common/BehaviourAction.h"
+#include "BehaviourNode.h"
+#include "BehaviourSelector.h"
+#include "BehaviourSequence.h"
+#include "BehaviourAction.h"
 //#include "../CSC8503Common/BehaviourTree.h"
 
 
@@ -240,9 +240,12 @@ void TestNetworking() {
 //	std::this_thread::sleep_for(std::chrono::seconds(1));
 
 	for (int i = 0; i < 100; ++i) {
-		server->SendGlobalPacket(StringPacket("Server says hello! " + std::to_string(i)));
-		client->SendPacket(StringPacket("Client1 says hello! " + std::to_string(i)));
-		client2->SendPacket(StringPacket("Client2 says hello! " + std::to_string(i)));
+		StringPacket a("Client1 says hello! " + std::to_string(i));
+		StringPacket b("Client2 says hello! " + std::to_string(i));
+		StringPacket c("Server says hello! " + std::to_string(i));
+		server->SendGlobalPacket(c);
+		client->SendPacket(a);
+		client2->SendPacket(b);
 		server->UpdateServer();
 		client->UpdateClient();
 		client2->UpdateClient();

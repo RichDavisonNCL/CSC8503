@@ -1,21 +1,21 @@
 #include "GameTechRenderer.h"
-#include "../CSC8503Common/GameObject.h"
-#include "../../Common/Camera.h"
-#include "../../Common/Vector2.h"
-#include "../../Common/Vector3.h"
-#include "../../Common/TextureLoader.h"
+#include "GameObject.h"
+#include "RenderObject.h"
+#include "Camera.h"
+#include "TextureLoader.h"
 using namespace NCL;
 using namespace Rendering;
 using namespace CSC8503;
 
 #define SHADOWSIZE 4096
 
-Matrix4 biasMatrix = Matrix4::Translation(Vector3(0.5, 0.5, 0.5)) * Matrix4::Scale(Vector3(0.5, 0.5, 0.5));
+Matrix4 biasMatrix = Matrix4::Translation(Vector3(0.5f, 0.5f, 0.5f)) * Matrix4::Scale(Vector3(0.5f, 0.5f, 0.5f));
 
 GameTechRenderer::GameTechRenderer(GameWorld& world) : OGLRenderer(*Window::GetWindow()), gameWorld(world)	{
 	glEnable(GL_DEPTH_TEST);
 
-	shadowShader = new OGLShader("GameTechShadowVert.glsl", "GameTechShadowFrag.glsl");
+	debugShader  = new OGLShader("debug.vert", "debug.frag");
+	shadowShader = new OGLShader("shadow.vert", "shadow.frag");
 
 	glGenTextures(1, &shadowTex);
 	glBindTexture(GL_TEXTURE_2D, shadowTex);
@@ -43,13 +43,24 @@ GameTechRenderer::GameTechRenderer(GameWorld& world) : OGLRenderer(*Window::GetW
 	lightPosition = Vector3(-200.0f, 60.0f, -200.0f);
 
 	//Skybox!
-	skyboxShader = new OGLShader("skyboxVertex.glsl", "skyboxFragment.glsl");
+	skyboxShader = new OGLShader("skybox.vert", "skybox.frag");
 	skyboxMesh = new OGLMesh();
 	skyboxMesh->SetVertexPositions({Vector3(-1, 1,-1), Vector3(-1,-1,-1) , Vector3(1,-1,-1) , Vector3(1,1,-1) });
 	skyboxMesh->SetVertexIndices({ 0,1,2,2,3,0 });
 	skyboxMesh->UploadToGPU();
 
 	LoadSkybox();
+
+	glGenVertexArrays(1, &lineVAO);
+	glGenVertexArrays(1, &textVAO);
+
+	glGenBuffers(1, &lineVertVBO);
+	glGenBuffers(1, &textVertVBO);
+	glGenBuffers(1, &textColourVBO);
+	glGenBuffers(1, &textTexVBO);
+
+	SetDebugStringBufferSizes(10000);
+	SetDebugLineBufferSizes(1000);
 }
 
 GameTechRenderer::~GameTechRenderer()	{
@@ -106,6 +117,14 @@ void GameTechRenderer::RenderFrame() {
 	RenderSkybox();
 	RenderCamera();
 	glDisable(GL_CULL_FACE); //Todo - text indices are going the wrong way...
+	glDisable(GL_BLEND);
+	glDisable(GL_DEPTH_TEST);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	NewRenderLines();
+	NewRenderText();
+	glDisable(GL_BLEND);
+	glEnable(GL_DEPTH_TEST);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 void GameTechRenderer::BuildObjectList() {
@@ -156,7 +175,7 @@ void GameTechRenderer::RenderShadowMap() {
 		}
 	}
 
-	glViewport(0, 0, currentWidth, currentHeight);
+	glViewport(0, 0, windowWidth, windowHeight);
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -168,7 +187,7 @@ void GameTechRenderer::RenderSkybox() {
 	glDisable(GL_BLEND);
 	glDisable(GL_DEPTH_TEST);
 
-	float screenAspect = (float)currentWidth / (float)currentHeight;
+	float screenAspect = (float)windowWidth / (float)windowHeight;
 	Matrix4 viewMatrix = gameWorld.GetMainCamera()->BuildViewMatrix();
 	Matrix4 projMatrix = gameWorld.GetMainCamera()->BuildProjectionMatrix(screenAspect);
 
@@ -194,7 +213,7 @@ void GameTechRenderer::RenderSkybox() {
 }
 
 void GameTechRenderer::RenderCamera() {
-	float screenAspect = (float)currentWidth / (float)currentHeight;
+	float screenAspect = (float)windowWidth / (float)windowHeight;
 	Matrix4 viewMatrix = gameWorld.GetMainCamera()->BuildViewMatrix();
 	Matrix4 projMatrix = gameWorld.GetMainCamera()->BuildProjectionMatrix(screenAspect);
 
@@ -237,7 +256,9 @@ void GameTechRenderer::RenderCamera() {
 			lightRadiusLocation = glGetUniformLocation(shader->GetProgramID(), "lightRadius");
 
 			cameraLocation = glGetUniformLocation(shader->GetProgramID(), "cameraPos");
-			glUniform3fv(cameraLocation, 1, (float*)&gameWorld.GetMainCamera()->GetPosition());
+
+			Vector3 camPos = gameWorld.GetMainCamera()->GetPosition();
+			glUniform3fv(cameraLocation, 1, camPos.array);
 
 			glUniformMatrix4fv(projLocation, 1, false, (float*)&projMatrix);
 			glUniformMatrix4fv(viewLocation, 1, false, (float*)&viewMatrix);
@@ -258,7 +279,8 @@ void GameTechRenderer::RenderCamera() {
 		Matrix4 fullShadowMat = shadowMatrix * modelMatrix;
 		glUniformMatrix4fv(shadowLocation, 1, false, (float*)&fullShadowMat);
 
-		glUniform4fv(colourLocation, 1, (float*)&i->GetColour());
+		Vector4 colour = i->GetColour();
+		glUniform4fv(colourLocation, 1, colour.array);
 
 		glUniform1i(hasVColLocation, !(*i).GetMesh()->GetColourData().empty());
 
@@ -272,14 +294,173 @@ void GameTechRenderer::RenderCamera() {
 	}
 }
 
-Matrix4 GameTechRenderer::SetupDebugLineMatrix()	const  {
-	float screenAspect = (float)currentWidth / (float)currentHeight;
-	Matrix4 viewMatrix = gameWorld.GetMainCamera()->BuildViewMatrix();
-	Matrix4 projMatrix = gameWorld.GetMainCamera()->BuildProjectionMatrix(screenAspect);
-
-	return projMatrix * viewMatrix;
+MeshGeometry* GameTechRenderer::LoadMesh(const string& name) {
+	OGLMesh* mesh = new OGLMesh(name);
+	mesh->SetPrimitiveType(GeometryPrimitive::Triangles);
+	mesh->UploadToGPU();
+	return mesh;
 }
 
-Matrix4 GameTechRenderer::SetupDebugStringMatrix()	const {
-	return Matrix4::Orthographic(-1, 1.0f, 100, 0, 0, 100);
+void GameTechRenderer::NewRenderLines() {
+	const std::vector<Debug::DebugLineEntry>& lines = Debug::GetDebugLines();
+	if (lines.empty()) {
+		return;
+	}
+	float screenAspect = (float)windowWidth / (float)windowHeight;
+	Matrix4 viewMatrix = gameWorld.GetMainCamera()->BuildViewMatrix();
+	Matrix4 projMatrix = gameWorld.GetMainCamera()->BuildProjectionMatrix(screenAspect);
+	
+	Matrix4 viewProj  = projMatrix * viewMatrix;
+
+	BindShader(debugShader);
+	int matSlot = glGetUniformLocation(debugShader->GetProgramID(), "viewProjMatrix");
+	GLuint texSlot = glGetUniformLocation(debugShader->GetProgramID(), "useTexture");
+	glUniform1i(texSlot, 0);
+
+	glUniformMatrix4fv(matSlot, 1, false, (float*)viewProj.array);
+
+	debugLineData.clear();
+
+	int frameLineCount = lines.size() * 2;
+
+	SetDebugLineBufferSizes(frameLineCount);
+
+	glBindBuffer(GL_ARRAY_BUFFER, lineVertVBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, frameLineCount * sizeof(Debug::DebugLineEntry), lines.data());
+	
+
+	glBindVertexArray(lineVAO);
+	glDrawArrays(GL_LINES, 0, frameLineCount);
+	glBindVertexArray(0);
+}
+
+void GameTechRenderer::NewRenderText() {
+	const std::vector<Debug::DebugStringEntry>& strings = Debug::GetDebugStrings();
+	if (strings.empty()) {
+		return;
+	}
+
+	BindShader(debugShader);
+
+	OGLTexture* t = (OGLTexture*)Debug::GetDebugFont()->GetTexture();
+
+	if (t) {
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, t->GetObjectID());
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glBindTexture(GL_TEXTURE_2D, 0);	
+		BindTextureToShader(t, "mainTex", 0);
+	}
+	Matrix4 proj = Matrix4::Orthographic(0.0, 100.0f, 100, 0, -1.0f, 1.0f);
+
+	int matSlot = glGetUniformLocation(debugShader->GetProgramID(), "viewProjMatrix");
+	glUniformMatrix4fv(matSlot, 1, false, (float*)proj.array);
+
+	GLuint texSlot = glGetUniformLocation(debugShader->GetProgramID(), "useTexture");
+	glUniform1i(texSlot, 1);
+
+	debugTextPos.clear();
+	debugTextColours.clear();
+	debugTextUVs.clear();
+
+	int frameVertCount = 0;
+	for (const auto& s : strings) {
+		frameVertCount += Debug::GetDebugFont()->GetVertexCountForString(s.data);
+	}
+	SetDebugStringBufferSizes(frameVertCount);
+
+	for (const auto& s : strings) {
+		float size = 20.0f;
+		Debug::GetDebugFont()->BuildVerticesForString(s.data, s.position, s.colour, size, debugTextPos, debugTextUVs, debugTextColours);
+	}
+
+
+	glBindBuffer(GL_ARRAY_BUFFER, textVertVBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, frameVertCount * sizeof(Vector3), debugTextPos.data());
+	glBindBuffer(GL_ARRAY_BUFFER, textColourVBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, frameVertCount * sizeof(Vector4), debugTextColours.data());
+	glBindBuffer(GL_ARRAY_BUFFER, textTexVBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, frameVertCount * sizeof(Vector2), debugTextUVs.data());
+
+	glBindVertexArray(textVAO);
+	glDrawArrays(GL_TRIANGLES, 0, frameVertCount);
+	glBindVertexArray(0);
+}
+
+
+
+TextureBase* GameTechRenderer::LoadTexture(const string& name) {
+	return TextureLoader::LoadAPITexture(name);
+}
+
+ShaderBase* GameTechRenderer::LoadShader(const string& vertex, const string& fragment) {
+	return new OGLShader(vertex, fragment);
+}
+
+void GameTechRenderer::SetDebugStringBufferSizes(size_t newVertCount) {
+	if (newVertCount > textCount) {
+		textCount = newVertCount;
+
+		glBindBuffer(GL_ARRAY_BUFFER, textVertVBO);
+		glBufferData(GL_ARRAY_BUFFER, textCount * sizeof(Vector3), nullptr, GL_DYNAMIC_DRAW);
+
+		glBindBuffer(GL_ARRAY_BUFFER, textColourVBO);
+		glBufferData(GL_ARRAY_BUFFER, textCount * sizeof(Vector4), nullptr, GL_DYNAMIC_DRAW);
+
+		glBindBuffer(GL_ARRAY_BUFFER, textTexVBO);
+		glBufferData(GL_ARRAY_BUFFER, textCount * sizeof(Vector2), nullptr, GL_DYNAMIC_DRAW);
+
+		debugTextPos.reserve(textCount);
+		debugTextColours.reserve(textCount);
+		debugTextUVs.reserve(textCount);
+
+		glBindVertexArray(textVAO);
+
+		glVertexAttribFormat(0, 3, GL_FLOAT, false, 0);
+		glVertexAttribBinding(0, 0);
+		glBindVertexBuffer(0, textVertVBO, 0, sizeof(Vector3));
+
+		glVertexAttribFormat(1, 4, GL_FLOAT, false, 0);
+		glVertexAttribBinding(1, 1);
+		glBindVertexBuffer(1, textColourVBO, 0, sizeof(Vector4));
+
+		glVertexAttribFormat(2, 2, GL_FLOAT, false, 0);
+		glVertexAttribBinding(2, 2);
+		glBindVertexBuffer(2, textTexVBO, 0, sizeof(Vector2));
+
+		glEnableVertexAttribArray(0);
+		glEnableVertexAttribArray(1);
+		glEnableVertexAttribArray(2);
+
+		glBindVertexArray(0);
+	}
+}
+
+void GameTechRenderer::SetDebugLineBufferSizes(size_t newVertCount) {
+	if (newVertCount > lineCount) {
+		lineCount = newVertCount;
+
+		glBindBuffer(GL_ARRAY_BUFFER, lineVertVBO);
+		glBufferData(GL_ARRAY_BUFFER, lineCount * sizeof(Debug::DebugLineEntry), nullptr, GL_DYNAMIC_DRAW);
+
+		debugLineData.reserve(lineCount);
+
+		glBindVertexArray(lineVAO);
+
+		int realStride = sizeof(Debug::DebugLineEntry) / 2;
+
+		glVertexAttribFormat(0, 3, GL_FLOAT, false, offsetof(Debug::DebugLineEntry, start));
+		glVertexAttribBinding(0, 0);
+		glBindVertexBuffer(0, lineVertVBO, 0, realStride);
+
+		glVertexAttribFormat(1, 4, GL_FLOAT, false, offsetof(Debug::DebugLineEntry, colourA));
+		glVertexAttribBinding(1, 0);
+		glBindVertexBuffer(1, lineVertVBO, sizeof(Vector4), realStride);
+
+		glEnableVertexAttribArray(0);
+		glEnableVertexAttribArray(1);
+
+		glBindVertexArray(0);
+	}
 }

@@ -1,6 +1,9 @@
 #pragma once
 #include "GameTechRenderer.h"
-#include "../CSC8503Common/PhysicsSystem.h"
+#ifdef USEVULKAN
+#include "GameTechVulkanRenderer.h"
+#endif
+#include "PhysicsSystem.h"
 
 #include "StateGameObject.h"
 
@@ -64,7 +67,11 @@ namespace NCL {
 
 			void		AddStateObjectToWorld(const Vector3& position);
 
-			GameTechRenderer*	renderer;
+#ifdef USEVULKAN
+			GameTechVulkanRenderer*	renderer;
+#else
+			GameTechRenderer* renderer;
+#endif
 			PhysicsSystem*		physics;
 			GameWorld*			world;
 
@@ -75,16 +82,18 @@ namespace NCL {
 
 			GameObject* selectionObject = nullptr;
 
-			OGLMesh*	capsuleMesh = nullptr;
-			OGLMesh*	cubeMesh	= nullptr;
-			OGLMesh*	sphereMesh	= nullptr;
-			OGLTexture* basicTex	= nullptr;
-			OGLShader*	basicShader = nullptr;
+			MeshGeometry*	capsuleMesh = nullptr;
+			MeshGeometry*	cubeMesh	= nullptr;
+			MeshGeometry*	sphereMesh	= nullptr;
+
+
+			TextureBase*	basicTex	= nullptr;
+			ShaderBase*		basicShader = nullptr;
 
 			//Coursework Meshes
-			OGLMesh*	charMesh	= nullptr;
-			OGLMesh*	enemyMesh	= nullptr;
-			OGLMesh*	bonusMesh	= nullptr;
+			MeshGeometry*	charMesh	= nullptr;
+			MeshGeometry*	enemyMesh	= nullptr;
+			MeshGeometry*	bonusMesh	= nullptr;
 
 			//Coursework Additional functionality	
 			GameObject* lockedObject	= nullptr;

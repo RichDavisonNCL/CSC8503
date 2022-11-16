@@ -1,15 +1,17 @@
 #include "TutorialGame.h"
-#include "../CSC8503Common/GameWorld.h"
-#include "../../Plugins/OpenGLRendering/OGLMesh.h"
-#include "../../Plugins/OpenGLRendering/OGLShader.h"
-#include "../../Plugins/OpenGLRendering/OGLTexture.h"
-#include "../../Common/TextureLoader.h"
+#include "GameWorld.h"
+#include "OGLMesh.h"
+#include "PhysicsObject.h"
+#include "RenderObject.h"
+#include "OGLShader.h"
+#include "OGLTexture.h"
+#include "TextureLoader.h"
 
-#include "../CSC8503Common/PositionConstraint.h"
+#include "PositionConstraint.h"
 
 #include "StateGameObject.h"
 
-#include "../CSC8503Common/OrientationConstraint.h"
+#include "OrientationConstraint.h"
 
 using namespace NCL;
 using namespace CSC8503;
@@ -19,14 +21,17 @@ GameObject* obbSpinner = nullptr;
 
 TutorialGame::TutorialGame()	{
 	world		= new GameWorld();
-	renderer	= new GameTechRenderer(*world);
+#ifdef USEVULKAN
+	renderer	= new GameTechVulkanRenderer(*world);
+#else 
+	renderer = new GameTechRenderer(*world);
+#endif
+
 	physics		= new PhysicsSystem(*world);
 
 	forceMagnitude	= 10.0f;
 	useGravity		= false;
 	inSelectionMode = false;
-
-	Debug::SetRenderer(renderer);
 
 	InitialiseAssets();
 
@@ -41,21 +46,15 @@ for this module, even in the coursework, but you can add it if you like!
 
 */
 void TutorialGame::InitialiseAssets() {
-	auto loadFunc = [](const string& name, OGLMesh** into) {
-		*into = new OGLMesh(name);
-		(*into)->SetPrimitiveType(GeometryPrimitive::Triangles);
-		(*into)->UploadToGPU();
-	};
+	cubeMesh	= renderer->LoadMesh("cube.msh");
+	sphereMesh	= renderer->LoadMesh("sphere.msh");
+	charMesh	= renderer->LoadMesh("Male1.msh");
+	enemyMesh	= renderer->LoadMesh("Male1.msh");
+	bonusMesh	= renderer->LoadMesh("sphere.msh");
+	capsuleMesh = renderer->LoadMesh("capsule.msh");
 
-	loadFunc("cube.msh"		 , &cubeMesh);
-	loadFunc("sphere.msh"	 , &sphereMesh);
-	loadFunc("Male1.msh"	 , &charMesh);
-	loadFunc("Male1.msh"	 , &enemyMesh);
-	loadFunc("sphere.msh"	 , &bonusMesh);
-	loadFunc("capsule.msh", &capsuleMesh);
-
-	basicTex = (OGLTexture*)TextureLoader::LoadAPITexture("checkerboard.png");
-	basicShader = new OGLShader("GameTechVert.glsl", "GameTechFrag.glsl");
+	basicTex	= renderer->LoadTexture("checkerboard.png");
+	basicShader = renderer->LoadShader("scene.vert", "scene.frag");
 
 	InitCamera();
 	InitWorld();
@@ -145,6 +144,16 @@ void TutorialGame::UpdateGame(float dt) {
 		}
 	}
 
+	Debug::DrawLine(Vector3(), Vector3(0, 100, 0), Vector4(1, 0, 0, 1));
+
+	Debug::DrawLine(Vector3(10,0,0), Vector3(10, 100, 0), Vector4(0, 1, 0, 1));
+
+	Debug::DrawLine(Vector3(20, 0, 0), Vector3(20, 100, 0), Vector4(0, 0, 1, 1));
+
+	Debug::DrawLine(Vector3(30, 0, 0), Vector3(30, 100, 0), Vector4(1, 1, 1, 1));
+
+	Debug::DrawLine(Vector3(40, 0, 0), Vector3(40, 100, 0), Vector4(0, 0, 0, 1));
+
 	SelectObject();
 	MoveSelectedObject();
 	if (testStateObject) {
@@ -154,10 +163,8 @@ void TutorialGame::UpdateGame(float dt) {
 	renderer->Update(dt);
 	physics->Update(dt);
 
-	Debug::FlushRenderables(dt);
 	renderer->Render();
-
-
+	Debug::UpdateRenderables(dt);
 }
 
 void TutorialGame::UpdateKeys() {
@@ -322,7 +329,7 @@ void TutorialGame::InitWorld() {
 	world->ClearAndErase();
 	physics->Clear();
 
-	//InitMixedGridWorld(15, 15, 3.5f, 3.5f);
+	InitMixedGridWorld(15, 15, 3.5f, 3.5f);
 	//InitCubeOBBGridWorld(4, 4, 4, 4, Vector3(1, 1, 1));
 
 	obbSpinner = AddOBBCubeToWorld(Vector3(), { 10,2,2 }, 0.00f);
@@ -564,7 +571,7 @@ GameObject* TutorialGame::AddEnemyToWorld(const Vector3& position) {
 
 	GameObject* character = new GameObject();
 
-	AABBVolume* volume = new AABBVolume(Vector3(0.3, 0.9f, 0.3) * meshSize);
+	AABBVolume* volume = new AABBVolume(Vector3(0.3f, 0.9f, 0.3f) * meshSize);
 	character->SetBoundingVolume((CollisionVolume*)volume);
 
 	character->GetTransform()
@@ -809,9 +816,9 @@ bool TutorialGame::SelectObject() {
 		}
 	}
 	if (inSelectionMode) {
-		renderer->DrawString("Press Q to change to camera mode!", Vector2(5, 85));
+		Debug::Print("Press Q to change to camera mode!", Vector2(5, 85));
 
-		if (Window::GetMouse()->ButtonDown(NCL::MouseButtons::Left)) {
+		if (Window::GetMouse()->ButtonDown(NCL::MouseButtons::LEFT)) {
 			if (selectionObject) {	//set colour to deselected;
 				selectionObject->GetRenderObject()->SetColour(Vector4(1, 1, 1, 1));
 				selectionObject = nullptr;
@@ -842,7 +849,7 @@ bool TutorialGame::SelectObject() {
 		}
 	}
 	else {
-		renderer->DrawString("Press Q to change to select mode!", Vector2(5, 85));
+		Debug::Print("Press Q to change to select mode!", Vector2(5, 85));
 	}
 	return false;
 }
@@ -855,14 +862,14 @@ line - after the third, they'll be able to twist under torque aswell.
 */
 
 void TutorialGame::MoveSelectedObject() {
-	renderer->DrawString("Click Force:" + std::to_string(forceMagnitude), Vector2(5, 90));
+	Debug::Print("Click Force:" + std::to_string(forceMagnitude), Vector2(5, 90));
 	forceMagnitude += Window::GetMouse()->GetWheelMovement() * 100.0f;
 
 	if (!selectionObject) {
 		return;//we haven't selected anything!
 	}
 	//Push the selected object!
-	if (Window::GetMouse()->ButtonPressed(NCL::MouseButtons::Right)) {
+	if (Window::GetMouse()->ButtonPressed(NCL::MouseButtons::RIGHT)) {
 		Ray ray = CollisionDetection::BuildRayFromMouse(*world->GetMainCamera());
 
 		RayCollision closestCollision;
