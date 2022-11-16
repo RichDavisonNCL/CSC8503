@@ -13,8 +13,8 @@ const int _FRAMECOUNT = 3;
 
 const int _TEXCOUNT = 128;
 
-const uint32_t lineStride = sizeof(Vector4) + sizeof(Vector4);
-const uint32_t textStride = sizeof(Vector2) + sizeof(Vector4) + sizeof(Vector2);
+const size_t lineStride = sizeof(Vector4) + sizeof(Vector4);
+const size_t textStride = sizeof(Vector2) + sizeof(Vector4) + sizeof(Vector2);
 
 GameTechVulkanRenderer::GameTechVulkanRenderer(GameWorld& world) : VulkanRenderer(*Window::GetWindow()), gameWorld(world) {
 	globalDataLayout = VulkanDescriptorSetLayoutBuilder("Global Data Layout")
@@ -261,7 +261,7 @@ void GameTechVulkanRenderer::RenderFrame() {
 	UpdateObjectList();
 
 	{//Render the shadow map for the frame
-		TransitionSamplerToDepth(&*shadowMap, defaultCmdBuffer);
+		
 		VulkanDynamicRenderBuilder()
 			.WithDepthAttachment(shadowMap->GetDefaultView())
 			.WithRenderArea(shadowScissor)
@@ -296,6 +296,8 @@ void GameTechVulkanRenderer::RenderFrame() {
 
 	EndRendering(defaultCmdBuffer);
 
+	TransitionSamplerToDepth(&*shadowMap, defaultCmdBuffer);
+
 	currentFrameIndex = (currentFrameIndex + 1) % _FRAMECOUNT;
 	currentFrame = &allFrames[currentFrameIndex];
 }
@@ -321,7 +323,7 @@ void GameTechVulkanRenderer::UpdateObjectList() {
 		currentFrame->indexData = CreateBuffer(sizeof(int) * currentFrame->objectCount, vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible);
 		currentFrame->indexMemory = (int*)device.mapMemory(*currentFrame->indexData.deviceMem, 0, currentFrame->indexData.allocInfo.allocationSize);
 
-		currentFrame->objectCount = objectCount * 1.5f;
+		currentFrame->objectCount = objectCount * 2;
 	}
 
 	VulkanMesh* pipeMesh = nullptr;
@@ -368,13 +370,13 @@ void GameTechVulkanRenderer::UpdateDebugData() {
 	for (const auto& s : strings) {
 		textVertCount += Debug::GetDebugFont()->GetVertexCountForString(s.data);
 	}
-	lineVertCount = lines.size() * 2;
+	lineVertCount = (int)lines.size() * 2;
 
-	int dataSize = lineVertCount * lineStride;
+	size_t dataSize = lineVertCount * lineStride;
 	dataSize += textVertCount * textStride;
 
 	if (dataSize > currentFrame->debugVertSize) {
-		int newDataSize = currentFrame->debugVertSize * 2;
+		size_t newDataSize = currentFrame->debugVertSize * 2;
 		device.unmapMemory(*currentFrame->debugData.deviceMem);
 		currentFrame->debugData = CreateBuffer(newDataSize, vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eHostVisible);
 		currentFrame->debugDataMemory = device.mapMemory(*currentFrame->debugData.deviceMem, 0, currentFrame->debugData.allocInfo.allocationSize);
@@ -463,7 +465,7 @@ void GameTechVulkanRenderer::RenderDebugLines(vk::CommandBuffer cmds) {
 	};
 
 	cmds.bindVertexBuffers(0, 2, attributeBuffers, attributeOffsets);
-	cmds.draw(lineVertCount, 1, 0, 0);
+	cmds.draw((uint32_t)lineVertCount, 1, 0, 0);
 }
 
 void GameTechVulkanRenderer::RenderDebugText(vk::CommandBuffer cmds) {
@@ -487,7 +489,7 @@ void GameTechVulkanRenderer::RenderDebugText(vk::CommandBuffer cmds) {
 	};
 
 	cmds.bindVertexBuffers(0, 3, attributeBuffers, attributeOffsets);
-	cmds.draw(textVertCount, 1, 0, 0);
+	cmds.draw((uint32_t)textVertCount, 1, 0, 0);
 }
 
 MeshGeometry* GameTechVulkanRenderer::LoadMesh(const string& name) {
@@ -500,7 +502,7 @@ MeshGeometry* GameTechVulkanRenderer::LoadMesh(const string& name) {
 TextureBase* GameTechVulkanRenderer::LoadTexture(const string& name) {
 	VulkanTexture* t = (VulkanTexture*)VulkanTexture::TextureFromFilenameLoader(name);
 	//Write the texture to our big descriptor set
-	UpdateImageDescriptor(*objectTextxureDescriptor, 0, loadedTextures.size(), t->GetDefaultView(), *defaultSampler);
+	UpdateImageDescriptor(*objectTextxureDescriptor, 0, (int)loadedTextures.size(), t->GetDefaultView(), *defaultSampler);
 	loadedTextures.push_back(t);
 	return t;
 }

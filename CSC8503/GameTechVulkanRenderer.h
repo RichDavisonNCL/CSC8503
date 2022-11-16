@@ -51,8 +51,8 @@ namespace NCL::Rendering {
 			VulkanBuffer	debugData;
 			void*			debugDataMemory;
 
-			int				objectCount;
-			int				debugVertSize;
+			size_t			objectCount;
+			size_t			debugVertSize;
 
 			vk::UniqueDescriptorSet dataDescriptor;
 		};
@@ -109,11 +109,11 @@ namespace NCL::Rendering {
 
 		vector<VulkanTexture*> loadedTextures;
 
-		int lineVertCount = 0;
-		int textVertCount = 0;
+		size_t lineVertCount = 0;
+		size_t textVertCount = 0;
 
-		int lineVertOffset = 0;
-		int textVertOffset = 0;
+		size_t lineVertOffset = 0;
+		size_t textVertOffset = 0;
 	};
 }
 #endif
