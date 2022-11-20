@@ -11,17 +11,18 @@ layout (set = 0, binding  = 0) uniform  GlobalInfo
 	vec3	cameraPos;
 };
 
+struct ObjectState{
+	mat4 	modelMatrix;
+	vec4 	colour;
+	ivec4 	indices;
+};
+
 layout (set = 0, binding  = 1) buffer ModelMatrices 
 {
-	mat4 modelMatrices[];
+	ObjectState objectStates[];
 };
 
-layout (set = 0, binding  = 2) buffer TextureIDs 
-{
-	int texIDs[];
-};
-
-layout (set  = 0, binding = 3) uniform  sampler2D shadowTex;
-layout (set  = 0, binding = 4) uniform  samplerCube skyTex;
+layout (set  = 0, binding = 2) uniform  sampler2D shadowTex;
+layout (set  = 0, binding = 3) uniform  samplerCube skyTex;
 
 layout (set  = 1, binding = 0) uniform  sampler2D textures[128];

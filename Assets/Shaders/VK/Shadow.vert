@@ -12,8 +12,8 @@ layout(push_constant) uniform PushConstantVert{
 };
 
 void main() {
-	int objectID = startingIndex + gl_InstanceIndex;
-	mat4 modelMatrix = modelMatrices[objectID];
+	int objectID 		= startingIndex + gl_InstanceIndex;
+	mat4 modelMatrix  	= objectStates[objectID].modelMatrix;
 
    gl_Position 	= shadowMatrix * modelMatrix * vec4(pos.xyz, 1);
 }

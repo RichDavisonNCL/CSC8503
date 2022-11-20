@@ -143,8 +143,6 @@ void NetworkedGame::UpdateMinimumState() {
 	}
 }
 
-
-
 void NetworkedGame::SpawnPlayer() {
 
 }
@@ -154,38 +152,7 @@ void NetworkedGame::StartLevel() {
 }
 
 void NetworkedGame::ReceivePacket(int type, GamePacket* payload, int source) {
-	std::cout << "SOME SORT OF PACKET RECEIVED" << std::endl;
-	if (type == Received_State) {	//Server version of the game receives these from players
-		ClientPacket* realPacket = (ClientPacket*)payload;
-	}
-	//CLIENT version of the game will receive these from the servers
-	else if (type == Delta_State) {
-		DeltaPacket* realPacket = (DeltaPacket*)payload;
-		if (realPacket->objectID < (int)networkObjects.size()) {
-			networkObjects[realPacket->objectID]->ReadPacket(*realPacket);
-		}
-	}
-	else if (type == Full_State) {
-		FullPacket* realPacket = (FullPacket*)payload;
-		if (realPacket->objectID < (int)networkObjects.size()) {
-			networkObjects[realPacket->objectID]->ReadPacket(*realPacket);
-		}
-	}
-	else if (type == Message) {
-		MessagePacket* realPacket = (MessagePacket*)payload;
 	
-		if (realPacket->messageID == COLLISION_MSG) {
-			std::cout << "Client: Received collision message!" << std::endl;
-		}
-	}
-	else if (type == Player_Connected) {
-		NewPlayerPacket* realPacket = (NewPlayerPacket*)payload;
-		std::cout << "Client: New player connected!" << std::endl;
-	}
-	else if (type == Player_Disconnected) {
-		PlayerDisconnectPacket* realPacket = (PlayerDisconnectPacket*)payload;
-		std::cout << "Client: Player Disconnected!" << std::endl;
-	}
 }
 
 void NetworkedGame::OnPlayerCollision(NetworkPlayer* a, NetworkPlayer* b) {

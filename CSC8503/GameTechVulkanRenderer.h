@@ -30,32 +30,73 @@ namespace NCL::Rendering {
 			Vector3	cameraPos;
 		};
 
+		struct ObjectState {
+			Matrix4 modelMatrix;
+			Vector4 colour;
+			int		index[4];
+		};
+
 		struct ObjectData {
 			VulkanTexture* cachedTex;
+			int index;
+		};
+
+		class VulkanGameTechTexture : public NCL::Rendering::VulkanTexture
+		{
+			friend class GameTechVulkanRenderer;
+		public:
+			VulkanGameTechTexture(const std::string& filename) : VulkanTexture(filename) {
+				index = 0;
+			}
+		protected:
 			int index;
 		};
 
 		struct FrameData {
 			vk::UniqueFence fence;
 
-			//This is the GPU-side list of all matrices of objects in the scene
-			VulkanBuffer	matrixData;
-			Matrix4*		matrixMemory;
-			//Texture index of each object in the list
-			VulkanBuffer	indexData;
-			int*			indexMemory;
+			VulkanBuffer	dataBuffer;
+			char*			dataStart;	//Start of our buffer
+			char*			data;		//We're bumping this along as we write data
 
-			VulkanBuffer	globalData;
-			GlobalData*		globalDataMemory;
-
-			VulkanBuffer	debugData;
-			void*			debugDataMemory;
+			int globalDataOffset	= 0;	//Where does the global data start in the buffer?
+			int objectStateOffset	= 0;	//Where does the object states start?
+			int debugLinesOffset	= 0;	//Where do the debug lines start?
+			int debugTextOffset		= 0;	//Where do the debug text verts start?
 
 			size_t			objectCount;
 			size_t			debugVertSize;
+			size_t			bytesWritten;
+
+			size_t lineVertCount = 0;
+			size_t textVertCount = 0;
+
+			size_t lineVertSize = 0;
+			size_t textVertSize = 0;
 
 			vk::UniqueDescriptorSet dataDescriptor;
+
+			template<typename T>
+			void WriteData(T value) {
+				memcpy(data, &value, sizeof(T));
+				data += sizeof(T);
+				bytesWritten += sizeof(T);
+			}
+			void WriteData(void* inData, size_t byteCount) {
+				memcpy(data, inData, byteCount);
+				data += byteCount;
+				bytesWritten += byteCount;
+			}
+
+			void AlignData(size_t alignment) {
+				char* oldData = data;
+				//data = (char*)(((uintptr_t)data + alignment - 1) & ~(uintptr_t)alignment);
+
+				data = (char*)((((uintptr_t)data + alignment - 1) / (uintptr_t)alignment) * (uintptr_t)alignment);
+				bytesWritten += data - oldData;
+			}
 		};
+
 		FrameData* allFrames;
 		FrameData* currentFrame;
 
@@ -108,12 +149,6 @@ namespace NCL::Rendering {
 		vk::UniqueSampler	textSampler;
 
 		vector<VulkanTexture*> loadedTextures;
-
-		size_t lineVertCount = 0;
-		size_t textVertCount = 0;
-
-		size_t lineVertOffset = 0;
-		size_t textVertOffset = 0;
 	};
 }
 #endif

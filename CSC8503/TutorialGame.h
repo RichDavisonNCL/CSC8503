@@ -31,23 +31,11 @@ namespace NCL {
 			*/
 			void InitGameExamples();
 
-			void InitCapsuleSphereTest();
-
 			void InitSphereGridWorld(int numRows, int numCols, float rowSpacing, float colSpacing, float radius);
 			void InitMixedGridWorld(int numRows, int numCols, float rowSpacing, float colSpacing);
 			void InitCubeGridWorld(int numRows, int numCols, float rowSpacing, float colSpacing, const Vector3& cubeDims);
-			void InitCubeOBBGridWorld(int numRows, int numCols, float rowSpacing, float colSpacing, const Vector3& cubeDims);
-			void InitSphereCollisionTorqueTest();
-			void InitCubeCollisionTorqueTest();
-			void InitSphereAABBTest();
-			void InitGJKWorld();
-			void InitDefaultFloor();
-			void BridgeConstraintTest();
-			void SimpleGJKTest();
-			void SimpleAABBTest();
-			void SimpleAABBTest2();
 
-			void InitSphereDistanceCheck();
+			void InitDefaultFloor();
 
 			bool SelectObject();
 			void MoveSelectedObject();
@@ -57,15 +45,10 @@ namespace NCL {
 			GameObject* AddFloorToWorld(const Vector3& position);
 			GameObject* AddSphereToWorld(const Vector3& position, float radius, float inverseMass = 10.0f);
 			GameObject* AddCubeToWorld(const Vector3& position, Vector3 dimensions, float inverseMass = 10.0f);
-			GameObject* AddOBBCubeToWorld(const Vector3& position, Vector3 dimensions, float inverseMass = 10.0f);
-
-			GameObject* AddCapsuleToWorld(const Vector3& position, float halfHeight, float radius, float inverseMass = 10.0f);
 
 			GameObject* AddPlayerToWorld(const Vector3& position);
 			GameObject* AddEnemyToWorld(const Vector3& position);
 			GameObject* AddBonusToWorld(const Vector3& position);
-
-			void		AddStateObjectToWorld(const Vector3& position);
 
 #ifdef USEVULKAN
 			GameTechVulkanRenderer*	renderer;
@@ -86,7 +69,6 @@ namespace NCL {
 			MeshGeometry*	cubeMesh	= nullptr;
 			MeshGeometry*	sphereMesh	= nullptr;
 
-
 			TextureBase*	basicTex	= nullptr;
 			ShaderBase*		basicShader = nullptr;
 
@@ -103,9 +85,6 @@ namespace NCL {
 			}
 
 			GameObject* objClosest = nullptr;
-
-
-			StateGameObject* testStateObject;
 		};
 	}
 }

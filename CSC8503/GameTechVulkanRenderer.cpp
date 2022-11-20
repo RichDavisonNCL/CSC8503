@@ -19,10 +19,9 @@ const size_t textStride = sizeof(Vector2) + sizeof(Vector4) + sizeof(Vector2);
 GameTechVulkanRenderer::GameTechVulkanRenderer(GameWorld& world) : VulkanRenderer(*Window::GetWindow()), gameWorld(world) {
 	globalDataLayout = VulkanDescriptorSetLayoutBuilder("Global Data Layout")
 		.WithUniformBuffers(1)	//0: The global data uniform buffer
-		.WithStorageBuffers(1)	//1: The list of model matrices
-		.WithStorageBuffers(1)  //2: The list of object indices	
-		.WithSamplers(1)		//3: The scene shadow map
-		.WithSamplers(1)		//4: The scene cubemap
+		.WithStorageBuffers(1)	//1: The list of object states
+		.WithSamplers(1)		//2: The scene shadow map
+		.WithSamplers(1)		//3: The scene cubemap
 
 		.Build(device);
 
@@ -33,6 +32,7 @@ GameTechVulkanRenderer::GameTechVulkanRenderer(GameWorld& world) : VulkanRendere
 	objectTextxureDescriptor = BuildUniqueDescriptorSet(*objectTextxureLayout);
 
 	defaultTexture = VulkanTexture::TextureFromFile("Default.png");
+	loadedTextures.push_back(&(*defaultTexture)); //Default will always be index 0!
 
 	defaultSampler = GetDevice().createSamplerUnique(
 		vk::SamplerCreateInfo()
@@ -112,30 +112,15 @@ GameTechVulkanRenderer::GameTechVulkanRenderer(GameWorld& world) : VulkanRendere
 		{//We store scene object matrices in a big UBO
 			allFrames[i].debugVertSize = 10000;
 			allFrames[i].objectCount = 1024;
-			allFrames[i].matrixData = CreateBuffer(sizeof(Matrix4) * allFrames[i].objectCount, vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible);
-			allFrames[i].matrixMemory = (Matrix4*)device.mapMemory(*allFrames[i].matrixData.deviceMem, 0, allFrames[i].matrixData.allocInfo.allocationSize);
 
-			allFrames[i].indexData = CreateBuffer(sizeof(int) * allFrames[i].objectCount, vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible);
-			allFrames[i].indexMemory = (int*)device.mapMemory(*allFrames[i].indexData.deviceMem, 0, allFrames[i].indexData.allocInfo.allocationSize);
-			
-			allFrames[i].globalData = CreateBuffer(sizeof(GlobalData), vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible);
-			allFrames[i].globalDataMemory = (GlobalData*)device.mapMemory(*allFrames[i].globalData.deviceMem, 0, allFrames[i].globalData.allocInfo.allocationSize);
-
-			allFrames[i].debugData = CreateBuffer(sizeof(GlobalData), vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eHostVisible);
-			allFrames[i].debugDataMemory = device.mapMemory(*allFrames[i].debugData.deviceMem, 0, allFrames[i].debugData.allocInfo.allocationSize);
+			allFrames[i].dataBuffer = CreateBuffer(1024 * 1024 * 64, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eHostVisible);
+			allFrames[i].data = (char*)device.mapMemory(*allFrames[i].dataBuffer.deviceMem, 0, allFrames[i].dataBuffer.allocInfo.allocationSize);
+			allFrames[i].dataStart = allFrames[i].data;
 
 			allFrames[i].dataDescriptor = BuildUniqueDescriptorSet(*globalDataLayout);
 
-			Vulkan::SetDebugName(device, vk::ObjectType::eBuffer, Vulkan::GetVulkanHandle(*allFrames[i].matrixData.buffer), "Object Matrix Data");
-			Vulkan::SetDebugName(device, vk::ObjectType::eBuffer, Vulkan::GetVulkanHandle(*allFrames[i].indexData.buffer), "Object Index Data");
-			Vulkan::SetDebugName(device, vk::ObjectType::eBuffer, Vulkan::GetVulkanHandle(*allFrames[i].globalData.buffer), "Global Frame Data");
-			Vulkan::SetDebugName(device, vk::ObjectType::eBuffer, Vulkan::GetVulkanHandle(*allFrames[i].debugData.buffer), "Frame Debug Data");
-
-			UpdateBufferDescriptor(*allFrames[i].dataDescriptor, allFrames[i].globalData, 0, vk::DescriptorType::eUniformBuffer);
-			UpdateBufferDescriptor(*allFrames[i].dataDescriptor, allFrames[i].matrixData, 1, vk::DescriptorType::eStorageBuffer);
-			UpdateBufferDescriptor(*allFrames[i].dataDescriptor, allFrames[i].indexData , 2, vk::DescriptorType::eStorageBuffer);
-			UpdateImageDescriptor(*allFrames[i].dataDescriptor, 3, 0, shadowMap->GetDefaultView(), *defaultSampler, vk::ImageLayout::eDepthStencilReadOnlyOptimal);
-			UpdateImageDescriptor(*allFrames[i].dataDescriptor, 4, 0, cubeTex->GetDefaultView(), *defaultSampler);
+			UpdateImageDescriptor(*allFrames[i].dataDescriptor, 2, 0, shadowMap->GetDefaultView(), *defaultSampler, vk::ImageLayout::eDepthStencilReadOnlyOptimal);
+			UpdateImageDescriptor(*allFrames[i].dataDescriptor, 3, 0, cubeTex->GetDefaultView(), *defaultSampler);
 		}
 	}
 	currentFrameIndex = 0;
@@ -218,7 +203,6 @@ void GameTechVulkanRenderer::BuildDebugPipelines() {
 		.WithVertexInputState(lineVertexState)
 		.WithTopology(vk::PrimitiveTopology::eLineList)
 		.WithShader(debugLineShader)
-		//.WithDepthState(vk::CompareOp::eLessOrEqual, true, true, false)
 		.WithColourFormats({ surfaceFormat })
 		.WithDepthStencilFormat(depthBuffer->GetFormat())
 		.WithDescriptorSetLayout(*globalDataLayout)		//Set 0
@@ -244,24 +228,39 @@ void GameTechVulkanRenderer::RenderFrame() {
 	VulkanTexture* tex = (VulkanTexture*)Debug::GetDebugFont()->GetTexture();
 	UpdateImageDescriptor(*objectTextxureDescriptor, 0, texID, tex->GetDefaultView(), *textSampler);
 
-	currentFrame->globalDataMemory->lightColour		= Vector4(0.8f, 0.8f, 0.5f, 1.0f);
-	currentFrame->globalDataMemory->lightRadius		= 1000.0f;
-	currentFrame->globalDataMemory->lightPosition	= Vector3(-100.0f, 60.0f, -100.0f);
-	currentFrame->globalDataMemory->cameraPos		= gameWorld.GetMainCamera()->GetPosition();
+	GlobalData frameData;
+	frameData.lightColour	= Vector4(0.8f, 0.8f, 0.5f, 1.0f);
+	frameData.lightRadius	= 1000.0f;
+	frameData.lightPosition = Vector3(-100.0f, 60.0f, -100.0f);
+	frameData.cameraPos		= gameWorld.GetMainCamera()->GetPosition();
 
-	currentFrame->globalDataMemory->viewMatrix	= gameWorld.GetMainCamera()->BuildViewMatrix();
-	currentFrame->globalDataMemory->projMatrix	= gameWorld.GetMainCamera()->BuildProjectionMatrix(hostWindow.GetScreenAspect());
-	currentFrame->globalDataMemory->orthoMatrix = Matrix4::Orthographic(0.0, 100.0f, 100, 0, -1.0f, 1.0f);
+	frameData.viewMatrix	= gameWorld.GetMainCamera()->BuildViewMatrix();
+	frameData.projMatrix	= gameWorld.GetMainCamera()->BuildProjectionMatrix(hostWindow.GetScreenAspect());
+	frameData.orthoMatrix	= Matrix4::Orthographic(0.0, 100.0f, 100, 0, -1.0f, 1.0f);
+	frameData.shadowMatrix  =	Matrix4::Perspective(50.0f, 500.0f, 1, 45.0f) * 
+								Matrix4::BuildViewMatrix(frameData.lightPosition, Vector3(0, 0, 0), Vector3(0, 1, 0));
 
-	Matrix4 shadowViewMatrix = Matrix4::BuildViewMatrix(currentFrame->globalDataMemory->lightPosition, Vector3(0, 0, 0), Vector3(0, 1, 0));
-	Matrix4 shadowProjMatrix = Matrix4::Perspective(50.0f, 500.0f, 1, 45.0f);
+	currentFrame->data				= currentFrame->dataStart;
+	currentFrame->bytesWritten		= 0;
+	currentFrame->globalDataOffset	= 0;
+	currentFrame->objectStateOffset = sizeof(GlobalData);
+	currentFrame->debugLinesOffset	= currentFrame->objectStateOffset;
 
-	currentFrame->globalDataMemory->shadowMatrix = shadowProjMatrix * shadowViewMatrix;
+	currentFrame->WriteData<GlobalData>(frameData); //Let's start filling up our frame data!
 
+	currentFrame->AlignData(128);
+	currentFrame->objectStateOffset = currentFrame->bytesWritten;
+	
 	UpdateObjectList();
 
-	{//Render the shadow map for the frame
-		
+	currentFrame->AlignData(128);
+
+	size_t objectSize = currentFrame->bytesWritten - currentFrame->objectStateOffset;
+
+	UpdateBufferDescriptorOffset(*currentFrame->dataDescriptor, currentFrame->dataBuffer, 0, vk::DescriptorType::eUniformBuffer, 0, sizeof(GlobalData));
+	UpdateBufferDescriptorOffset(*currentFrame->dataDescriptor, currentFrame->dataBuffer, 1, vk::DescriptorType::eStorageBuffer, currentFrame->objectStateOffset, objectSize);
+
+	{//Render the shadow map for the frame	
 		VulkanDynamicRenderBuilder()
 			.WithDepthAttachment(shadowMap->GetDefaultView())
 			.WithRenderArea(shadowScissor)
@@ -314,17 +313,6 @@ void GameTechVulkanRenderer::UpdateObjectList() {
 			}
 		}
 	);
-	if (objectCount > currentFrame->objectCount) {
-		device.unmapMemory(*currentFrame->matrixData.deviceMem);
-		currentFrame->matrixData = CreateBuffer(sizeof(Matrix4) * currentFrame->objectCount, vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible);
-		currentFrame->matrixMemory = (Matrix4*)device.mapMemory(*currentFrame->matrixData.deviceMem, 0, currentFrame->matrixData.allocInfo.allocationSize);
-
-		device.unmapMemory(*currentFrame->indexData.deviceMem);
-		currentFrame->indexData = CreateBuffer(sizeof(int) * currentFrame->objectCount, vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible);
-		currentFrame->indexMemory = (int*)device.mapMemory(*currentFrame->indexData.deviceMem, 0, currentFrame->indexData.allocInfo.allocationSize);
-
-		currentFrame->objectCount = objectCount * 2;
-	}
 
 	VulkanMesh* pipeMesh = nullptr;
 	int at = 0;
@@ -334,20 +322,20 @@ void GameTechVulkanRenderer::UpdateObjectList() {
 				RenderObject* g = o->GetRenderObject();
 				if (g) {
 					activeObjects.emplace_back(g);
-					currentFrame->matrixMemory[at] = g->GetTransform()->GetMatrix();
 
+					ObjectState state;
+					state.modelMatrix = g->GetTransform()->GetMatrix();
+					state.colour = g->GetColour();
+					state.index[0] = 0;
 					if (g->GetMesh()) {
 						pipeMesh = (VulkanMesh*)g->GetMesh();
 					}
-					if (g->GetDefaultTexture() != nullptr && g->GetAPIData() == 0) {
-						for (int i = 0; i < loadedTextures.size(); ++i) {
-							if (loadedTextures[i] == g->GetDefaultTexture()) {
-								g->SetAPIData(i);
-								break;
-							}
-						}
+					if (g->GetDefaultTexture()) {
+						VulkanGameTechTexture* t = (VulkanGameTechTexture*)g->GetDefaultTexture();
+						state.index[0] = t->index;
 					}
-					currentFrame->indexMemory[at] = g->GetAPIData();
+					currentFrame->WriteData<ObjectState>(state);
+					currentFrame->debugLinesOffset += sizeof(ObjectState);
 					at++;
 				}
 			}
@@ -360,39 +348,24 @@ void GameTechVulkanRenderer::UpdateObjectList() {
 
 void GameTechVulkanRenderer::UpdateDebugData() {
 	const std::vector<Debug::DebugStringEntry>& strings = Debug::GetDebugStrings();
-	const std::vector<Debug::DebugLineEntry>& lines = Debug::GetDebugLines();
+	const std::vector<Debug::DebugLineEntry>& lines		= Debug::GetDebugLines();
 
-	if (lines.size() > 20) {
-		bool a = true;
-	}
+	currentFrame->textVertCount = 0;
+	currentFrame->lineVertCount = 0;
 
-	textVertCount = 0;
 	for (const auto& s : strings) {
-		textVertCount += Debug::GetDebugFont()->GetVertexCountForString(s.data);
+		currentFrame->textVertCount += Debug::GetDebugFont()->GetVertexCountForString(s.data);
 	}
-	lineVertCount = (int)lines.size() * 2;
+	currentFrame->lineVertCount = (int)lines.size() * 2;
 
-	size_t dataSize = lineVertCount * lineStride;
-	dataSize += textVertCount * textStride;
+	currentFrame->lineVertSize = currentFrame->lineVertCount * lineStride;
+	currentFrame->textVertSize = currentFrame->textVertCount * textStride;
 
-	if (dataSize > currentFrame->debugVertSize) {
-		size_t newDataSize = currentFrame->debugVertSize * 2;
-		device.unmapMemory(*currentFrame->debugData.deviceMem);
-		currentFrame->debugData = CreateBuffer(newDataSize, vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eHostVisible);
-		currentFrame->debugDataMemory = device.mapMemory(*currentFrame->debugData.deviceMem, 0, currentFrame->debugData.allocInfo.allocationSize);
+	currentFrame->debugLinesOffset = currentFrame->bytesWritten;
 
-		currentFrame->debugVertSize = newDataSize;
-	}
-	char* data = (char*)currentFrame->debugDataMemory;
+	currentFrame->WriteData((void*)lines.data(), (size_t)currentFrame->lineVertCount * lineStride);
 
-	lineVertOffset = 0;
-
-	memcpy(data, lines.data(), lineVertCount * lineStride);
-
-	data += lineVertCount * lineStride;
-
-	textVertOffset = lineVertCount * textStride;
-
+	currentFrame->debugTextOffset = currentFrame->bytesWritten;
 	std::vector< NCL::Rendering::SimpleFont::InterleavedTextVertex> verts;
 
 	for (const auto& s : strings) {
@@ -400,8 +373,9 @@ void GameTechVulkanRenderer::UpdateDebugData() {
 		Debug::GetDebugFont()->BuildInterleavedVerticesForString(s.data, s.position, s.colour, size, verts);
 		//can now copy to GPU visible mem
 		size_t count = verts.size() * textStride;
-		memcpy(data, verts.data(), count);
-		data += count;
+		memcpy(currentFrame->data, verts.data(), count);
+		currentFrame->data += count;
+		currentFrame->bytesWritten += count;
 		verts.clear();
 	}
 }
@@ -455,17 +429,17 @@ void GameTechVulkanRenderer::RenderDebugLines(vk::CommandBuffer cmds) {
 	cmds.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *debugLinePipeline.layout, 1, 1, &*objectTextxureDescriptor, 0, nullptr);
 
 	vk::Buffer attributeBuffers[2] = {
-		*currentFrame->debugData.buffer,
-		*currentFrame->debugData.buffer
+		*currentFrame->dataBuffer.buffer,
+		*currentFrame->dataBuffer.buffer
 	};
 
 	vk::DeviceSize attributeOffsets[2] = {
-		lineVertOffset + 0,
-		lineVertOffset + sizeof(Vector4)
+		currentFrame->debugLinesOffset + 0,
+		currentFrame->debugLinesOffset + sizeof(Vector4)
 	};
 
 	cmds.bindVertexBuffers(0, 2, attributeBuffers, attributeOffsets);
-	cmds.draw((uint32_t)lineVertCount, 1, 0, 0);
+	cmds.draw((uint32_t)currentFrame->lineVertCount, 1, 0, 0);
 }
 
 void GameTechVulkanRenderer::RenderDebugText(vk::CommandBuffer cmds) {
@@ -477,19 +451,19 @@ void GameTechVulkanRenderer::RenderDebugText(vk::CommandBuffer cmds) {
 	cmds.pushConstants(*debugTextPipeline.layout, vk::ShaderStageFlagBits::eFragment, 0, sizeof(uint32_t), (void*)&texID);
 
 	vk::Buffer attributeBuffers[3] = {
-		*currentFrame->debugData.buffer,
-		*currentFrame->debugData.buffer,
-		*currentFrame->debugData.buffer
+		*currentFrame->dataBuffer.buffer,
+		*currentFrame->dataBuffer.buffer,
+		*currentFrame->dataBuffer.buffer
 	};
 
 	vk::DeviceSize attributeOffsets[3] = {
-		textVertOffset + 0,
-		textVertOffset + sizeof(Vector2), //jump over the position
-		textVertOffset + sizeof(Vector2) + sizeof(Vector2) //jump over position and tex coord
+		currentFrame->debugTextOffset + 0,
+		currentFrame->debugTextOffset + sizeof(Vector2), //jump over the position
+		currentFrame->debugTextOffset + sizeof(Vector2) + sizeof(Vector2) //jump over position and tex coord
 	};
 
 	cmds.bindVertexBuffers(0, 3, attributeBuffers, attributeOffsets);
-	cmds.draw((uint32_t)textVertCount, 1, 0, 0);
+	cmds.draw((uint32_t)currentFrame->textVertCount, 1, 0, 0);
 }
 
 MeshGeometry* GameTechVulkanRenderer::LoadMesh(const string& name) {
@@ -499,10 +473,12 @@ MeshGeometry* GameTechVulkanRenderer::LoadMesh(const string& name) {
 	newMesh->UploadToGPU(this);
 	return newMesh;
 }
+
 TextureBase* GameTechVulkanRenderer::LoadTexture(const string& name) {
-	VulkanTexture* t = (VulkanTexture*)VulkanTexture::TextureFromFilenameLoader(name);
+	VulkanGameTechTexture* t = new VulkanGameTechTexture(name);
 	//Write the texture to our big descriptor set
 	UpdateImageDescriptor(*objectTextxureDescriptor, 0, (int)loadedTextures.size(), t->GetDefaultView(), *defaultSampler);
+	t->index = loadedTextures.size();
 	loadedTextures.push_back(t);
 	return t;
 }

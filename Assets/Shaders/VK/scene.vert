@@ -23,7 +23,7 @@ layout(push_constant) uniform PushConstantVert{
 };
 
 const mat4 biasMatrix = mat4( 
-	0.5, 0.0, 0.0, 0.0,
+	0.5, 0.0, 0.0, 0.0, 
 	0.0, 0.5, 0.0, 0.0,
 	0.0, 0.0, 1.0, 0.0,
 	0.5, 0.5, 0.0, 1.0 );
@@ -31,7 +31,7 @@ const mat4 biasMatrix = mat4(
 void main() {
 	int objectID = startingIndex + gl_InstanceIndex;
 
-	mat4 modelMatrix  = modelMatrices[objectID];
+	mat4 modelMatrix  = objectStates[objectID].modelMatrix;
 	mat4 mvp 		  = (projMatrix * viewMatrix * modelMatrix);
 	mat3 normalMatrix = transpose ( inverse ( mat3 ( modelMatrix )));
 
@@ -40,10 +40,12 @@ void main() {
 	OUT.shadowProj 	=  biasMatrix * shadowMatrix * worldPos;
 	OUT.worldPos 	= worldPos.xyz;
 	OUT.normal 		= normalize ( normalMatrix * normalize ( inNormal ));
+
+	//OUT.normal 		= inNormal;
 	
 	OUT.texCoord	= texCoord;
-	OUT.colour		= vec4(1,1,1,1);//objectColour;
-	OUT.texID		= texIDs[objectID];
+	OUT.colour		= objectStates[objectID].colour;
+	OUT.texID		= objectStates[objectID].indices[0];
 
 	gl_Position		= mvp * vec4(inPosition, 1.0);
 }
