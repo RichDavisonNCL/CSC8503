@@ -102,6 +102,11 @@ namespace NCL::Rendering {
 
 		void RenderFrame()	override;
 
+		//void RenderFrame(float dt)	override;
+		//	Update(dt);
+		//	Render();
+		//}
+
 		void BuildScenePipelines(VulkanMesh* m);
 		void BuildDebugPipelines();
 

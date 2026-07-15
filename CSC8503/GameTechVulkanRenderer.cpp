@@ -229,9 +229,9 @@ void GameTechVulkanRenderer::RenderFrame() {
 	UpdateImageDescriptor(*objectTextxureDescriptor, 0, texID, tex->GetDefaultView(), *textSampler);
 
 	GlobalData frameData;
-	frameData.lightColour	= Vector4(0.8f, 0.8f, 0.5f, 1.0f);
-	frameData.lightRadius	= 1000.0f;
-	frameData.lightPosition = Vector3(-100.0f, 60.0f, -100.0f);
+	frameData.lightColour = lightColour;
+	frameData.lightRadius = lightRadius;
+	frameData.lightPosition = lightPosition;
 	frameData.cameraPos		= gameWorld.GetMainCamera()->GetPosition();
 
 	frameData.viewMatrix	= gameWorld.GetMainCamera()->BuildViewMatrix();

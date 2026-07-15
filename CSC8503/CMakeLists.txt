@@ -4,7 +4,7 @@ set(PROJECT_NAME CSC8503)
 # Source groups
 ################################################################################
 set(Header_Files
-    "GameTechRenderer.h"
+    "GameTechRendererInterface.h"
     "NetworkedGame.h"
     "NetworkPlayer.h"
     "StateGameObject.h"
@@ -13,7 +13,7 @@ set(Header_Files
 source_group("Header Files" FILES ${Header_Files})
 
 set(Source_Files
-    "GameTechRenderer.cpp"
+    "GameTechRendererInterface.cpp"
     "Main.cpp"
     "NetworkedGame.cpp"
     "NetworkPlayer.cpp"
@@ -22,13 +22,12 @@ set(Source_Files
 )
 
 if(USE_VULKAN)
-list(APPEND Header_Files "GameTechVulkanRenderer.h")
-list(APPEND Source_Files "GameTechVulkanRenderer.cpp")
-
-
-
-file(GLOB SHADER_FILES ${ASSET_ROOT}/Shaders/VK/*.*)
-
+    list(APPEND Header_Files "GameTechVulkanRenderer.h")
+    list(APPEND Source_Files "GameTechVulkanRenderer.cpp")
+    file(GLOB SHADER_FILES ${ASSET_ROOT}/Shaders/VK/*.*)
+else()
+    list(APPEND Header_Files "GameTechOpenGLRenderer.h")
+    list(APPEND Source_Files "GameTechOpenGLRenderer.cpp")
 endif()
 
 source_group("Source Files" FILES ${Source_Files})
@@ -96,12 +95,12 @@ add_executable(${PROJECT_NAME}  ${ALL_FILES})
 use_props(${PROJECT_NAME} "${CMAKE_CONFIGURATION_TYPES}" "${DEFAULT_CXX_PROPS}")
 set(ROOT_NAMESPACE CSC8503)
 
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    VS_GLOBAL_KEYWORD "Win32Proj"
-)
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    INTERPROCEDURAL_OPTIMIZATION_RELEASE "TRUE"
-)
+#set_target_properties(${PROJECT_NAME} PROPERTIES
+#    VS_GLOBAL_KEYWORD "Win32Proj"
+#)
+#set_target_properties(${PROJECT_NAME} PROPERTIES
+#    INTERPROCEDURAL_OPTIMIZATION_RELEASE "TRUE"
+#)
 
 ################################################################################
 # Compile definitions
@@ -128,15 +127,13 @@ target_precompile_headers(${PROJECT_NAME} PRIVATE
     <functional>
     <iostream>
     <set>
-    "../NCLCoreClasses/Vector2.h"
-    "../NCLCoreClasses/Vector3.h"
-    "../NCLCoreClasses/Vector4.h"
+    "../NCLCoreClasses/Vector.h"
     "../NCLCoreClasses/Quaternion.h"
     "../NCLCoreClasses/Plane.h"
-    "../NCLCoreClasses/Matrix2.h"
-    "../NCLCoreClasses/Matrix3.h"
-    "../NCLCoreClasses/Matrix4.h"
-    
+    "../NCLCoreClasses/Matrix.h"
+    "../NCLCoreClasses/GameTimer.h" 
+
+    "../NCLCoreClasses/Window.h" 
 )
  
 if(USE_VULKAN)
@@ -162,53 +159,51 @@ endif()
 ################################################################################
 # Compile and link options
 ################################################################################
-if(MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE
-        $<$<CONFIG:Release>:
-            /Oi;
-            /Gy
-        >
-        /permissive-;
-        /std:c++latest;
-        /sdl;
-        /W3;
-        ${DEFAULT_CXX_DEBUG_INFORMATION_FORMAT};
-        ${DEFAULT_CXX_EXCEPTION_HANDLING};
-        /Y-
-    )
-    target_link_options(${PROJECT_NAME} PRIVATE
-        $<$<CONFIG:Release>:
-            /OPT:REF;
-            /OPT:ICF
-        >
-    )
-endif()
+#if(MSVC)
+#    target_compile_options(${PROJECT_NAME} PRIVATE
+#        $<$<CONFIG:Release>:
+#            /Oi;
+#            /Gy
+#        >
+#        /permissive-;
+#        /std:c++latest;
+#        /sdl;
+#        /W3;
+#        ${DEFAULT_CXX_DEBUG_INFORMATION_FORMAT};
+#        ${DEFAULT_CXX_EXCEPTION_HANDLING};
+#        /Y-
+#    )
+#    target_link_options(${PROJECT_NAME} PRIVATE
+#        $<$<CONFIG:Release>:
+#            /OPT:REF;
+#            /OPT:ICF
+#        >
+#    )
+#endif()
+#
+#################################################################################
+## Dependencies
+#################################################################################
+#if(MSVC)
+#    target_link_libraries(${PROJECT_NAME} LINK_PUBLIC  "Winmm.lib")
+#endif()
 
-################################################################################
-# Dependencies
-################################################################################
-if(MSVC)
-    target_link_libraries(${PROJECT_NAME} LINK_PUBLIC  "Winmm.lib")
-endif()
-
-include_directories("../OpenGLRendering/")
 include_directories("../NCLCoreClasses/")
 include_directories("../CSC8503CoreClasses/")
 
 target_link_libraries(${PROJECT_NAME} LINK_PUBLIC NCLCoreClasses)
 target_link_libraries(${PROJECT_NAME} LINK_PUBLIC CSC8503CoreClasses)
-target_link_libraries(${PROJECT_NAME} LINK_PUBLIC OpenGLRendering)
 
 if(USE_VULKAN)
-include_directories("../VulkanRendering/")
-target_link_libraries(${PROJECT_NAME} LINK_PUBLIC VulkanRendering)
+    include_directories("../VulkanRendering/")
+    target_link_libraries(${PROJECT_NAME} LINK_PUBLIC VulkanRendering)
 
-
-add_custom_target(
-    SHADER_FILES
-    DEPENDS ON ${SPIRV_BINARY_FILES}
-)
-
-add_dependencies(${PROJECT_NAME} SHADER_FILES)
-
+   # add_custom_target(
+   #     SHADER_FILES
+   #     DEPENDS ON ${SPIRV_BINARY_FILES}
+   # )
+   # add_dependencies(${PROJECT_NAME} SHADER_FILES)
+else()
+    include_directories("../OpenGLRendering/")
+    target_link_libraries(${PROJECT_NAME} LINK_PUBLIC OpenGLRendering)
 endif()

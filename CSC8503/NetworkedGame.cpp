@@ -3,6 +3,7 @@
 #include "NetworkObject.h"
 #include "GameServer.h"
 #include "GameClient.h"
+#include "../NCLCoreClasses/Window.h"
 
 #define COLLISION_MSG 30
 
@@ -16,7 +17,8 @@ struct MessagePacket : public GamePacket {
 	}
 };
 
-NetworkedGame::NetworkedGame()	{
+NetworkedGame::NetworkedGame(GameWorld& gameWorld, GameTechRendererInterface& renderer, PhysicsSystem& physics, Controller& gameController)
+	: TutorialGame(gameWorld, renderer, physics, gameController)	{
 	thisServer = nullptr;
 	thisClient = nullptr;
 
@@ -62,10 +64,10 @@ void NetworkedGame::UpdateGame(float dt) {
 		timeToNextPacket += 1.0f / 20.0f; //20hz server/client update
 	}
 
-	if (!thisServer && Window::GetKeyboard()->KeyPressed(KeyboardKeys::F9)) {
+	if (!thisServer && Window::GetKeyboard()->KeyPressed(KeyCodes::F9)) {
 		StartAsServer();
 	}
-	if (!thisClient && Window::GetKeyboard()->KeyPressed(KeyboardKeys::F10)) {
+	if (!thisClient && Window::GetKeyboard()->KeyPressed(KeyCodes::F10)) {
 		StartAsClient(127,0,0,1);
 	}
 
@@ -86,7 +88,7 @@ void NetworkedGame::UpdateAsServer(float dt) {
 void NetworkedGame::UpdateAsClient(float dt) {
 	ClientPacket newPacket;
 
-	if (Window::GetKeyboard()->KeyPressed(KeyboardKeys::SPACE)) {
+	if (Window::GetKeyboard()->KeyPressed(KeyCodes::SPACE)) {
 		//fire button pressed!
 		newPacket.buttonstates[0] = 1;
 		newPacket.lastID = 0; //You'll need to work this out somehow...
@@ -98,7 +100,7 @@ void NetworkedGame::BroadcastSnapshot(bool deltaFrame) {
 	std::vector<GameObject*>::const_iterator first;
 	std::vector<GameObject*>::const_iterator last;
 
-	world->GetObjectIterators(first, last);
+	world.GetObjectIterators(first, last);
 
 	for (auto i = first; i != last; ++i) {
 		NetworkObject* o = (*i)->GetNetworkObject();
@@ -125,14 +127,14 @@ void NetworkedGame::UpdateMinimumState() {
 	int maxID = 0; //we could use this to see if a player is lagging behind?
 
 	for (auto i : stateIDs) {
-		minID = min(minID, i.second);
-		maxID = max(maxID, i.second);
+		minID = std::min(minID, i.second);
+		maxID = std::max(maxID, i.second);
 	}
 	//every client has acknowledged reaching at least state minID
 	//so we can get rid of any old states!
 	std::vector<GameObject*>::const_iterator first;
 	std::vector<GameObject*>::const_iterator last;
-	world->GetObjectIterators(first, last);
+	world.GetObjectIterators(first, last);
 
 	for (auto i = first; i != last; ++i) {
 		NetworkObject* o = (*i)->GetNetworkObject();
