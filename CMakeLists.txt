@@ -55,23 +55,24 @@ include(CMake/GlobalSettingsInclude.cmake OPTIONAL)
 ################################################################################
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-find_package(Vulkan REQUIRED)
-
 set(ASSET_ROOT "${CMAKE_SOURCE_DIR}/Assets/" CACHE STRING "" FORCE)
 add_compile_definitions(ASSETROOTLOCATION="${ASSET_ROOT}") 
 
 set(USE_VULKAN CACHE BOOL FORCE)
-if(USE_VULKAN)
-    add_compile_definitions("USEVULKAN") 
-endif() 
+
 ################################################################################
 # Sub-projects
 ################################################################################
 add_subdirectory(NCLCoreClasses)
 add_subdirectory(CSC8503CoreClasses)
-add_subdirectory(OpenGLRendering)
 add_subdirectory(CSC8503)
+
 if(USE_VULKAN)
     add_subdirectory(VulkanRendering)
+    add_compile_definitions("USEVULKAN")
+    find_package(Vulkan REQUIRED) 
+else()
+    add_subdirectory(OpenGLRendering)
 endif()
+
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT CSC8503)
