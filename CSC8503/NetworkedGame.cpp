@@ -1,78 +1,61 @@
 #include "NetworkedGame.h"
 #include "NetworkPlayer.h"
 #include "./Networking/NetworkObject.h"
-#include "./Networking/GameServer.h"
-#include "./Networking/GameClient.h"
+
 #include "../NCLCoreClasses/Window.h"
 
 #define COLLISION_MSG 30
+#define TEST_MSG 666
 
 using namespace NCL;
 using namespace CSC8503;
 
 struct MessagePacket : public GamePacket {
-	short playerID;
-	short messageID;
+	short playerID	= -1;
+	short messageID = -1;
 
 	MessagePacket() {
-		type = Message;
+		type = BasicNetworkMessages::Message;
 		size = sizeof(short) * 2;
 	}
 };
 
 NetworkedGame::NetworkedGame(GameWorld& gameWorld, GameTechRendererInterface& renderer, PhysicsSystem& physics, Controller& gameController)
 	: TutorialGame(gameWorld, renderer, physics, gameController)	{
-	thisServer = nullptr;
-	thisClient = nullptr;
 
-	NetworkBase::Initialise();
 	timeToNextPacket  = 0.0f;
 	packetsToSnapshot = 0;
 }
 
 NetworkedGame::~NetworkedGame()	{
-	delete thisServer;
-	delete thisClient;
-}
 
-void NetworkedGame::StartAsServer() {
-	thisServer = new GameServer(NetworkBase::GetDefaultPort(), 4);
-
-	thisServer->RegisterPacketHandler(Received_State, this);
-
-	StartLevel();
-}
-
-void NetworkedGame::StartAsClient(char a, char b, char c, char d) {
-	thisClient = new GameClient();
-	thisClient->Connect(a, b, c, d, NetworkBase::GetDefaultPort());
-
-	thisClient->RegisterPacketHandler(Delta_State, this);
-	thisClient->RegisterPacketHandler(Full_State, this);
-	thisClient->RegisterPacketHandler(Player_Connected, this);
-	thisClient->RegisterPacketHandler(Player_Disconnected, this);
-
-	StartLevel();
 }
 
 void NetworkedGame::UpdateGame(float dt) {
 	timeToNextPacket -= dt;
 	if (timeToNextPacket < 0) {
-		if (thisServer) {
-			UpdateAsServer(dt);
-		}
-		else if (thisClient) {
-			UpdateAsClient(dt);
-		}
+
 		timeToNextPacket += 1.0f / 20.0f; //20hz server/client update
 	}
 
-	if (!thisServer && Window::GetKeyboard()->KeyPressed(KeyCodes::F9)) {
-		StartAsServer();
+
+	if (IsServer()) {
+		UpdateAsServer(dt);
 	}
-	if (!thisClient && Window::GetKeyboard()->KeyPressed(KeyCodes::F10)) {
-		StartAsClient(127,0,0,1);
+	if (IsClient()) {
+		UpdateAsClient(dt);
 	}
+
+	if (!IsServer() && Window::GetKeyboard()->KeyPressed(KeyCodes::F9)) {
+		InitialiseServer(NetworkSystem::GetDefaultPort(), 4);
+	}
+	if (!IsClient() && Window::GetKeyboard()->KeyPressed(KeyCodes::F10)) {
+		InitialiseClient(127, 0, 0, 1, NetworkSystem::GetDefaultPort());
+	}
+
+	//StartLevel();
+
+	UpdateNetwork();
 
 	TutorialGame::UpdateGame(dt);
 }
@@ -86,42 +69,48 @@ void NetworkedGame::UpdateAsServer(float dt) {
 	else {
 		BroadcastSnapshot(true);
 	}
+
+	if (Window::GetKeyboard()->KeyPressed(KeyCodes::B)) {
+		MessagePacket newPacket;
+		newPacket.messageID = TEST_MSG;
+		BroadcastServerPacket(newPacket);
+	}
 }
 
 void NetworkedGame::UpdateAsClient(float dt) {
-	ClientPacket newPacket;
-
 	if (Window::GetKeyboard()->KeyPressed(KeyCodes::SPACE)) {
-		//fire button pressed!
+		//fire button pressed!	
+ 		ClientPacket newPacket;
 		newPacket.buttonstates[0] = 1;
 		newPacket.lastID = 0; //You'll need to work this out somehow...
+
+		SendClientPacket(newPacket);
 	}
-	thisClient->SendPacket(newPacket);
 }
 
 void NetworkedGame::BroadcastSnapshot(bool deltaFrame) {
-	std::vector<GameObject*>::const_iterator first;
-	std::vector<GameObject*>::const_iterator last;
+	//std::vector<GameObject*>::const_iterator first;
+	//std::vector<GameObject*>::const_iterator last;
 
-	world.GetObjectIterators(first, last);
+	//world.GetObjectIterators(first, last);
 
-	for (auto i = first; i != last; ++i) {
-		NetworkObject* o = (*i)->GetNetworkObject();
-		if (!o) {
-			continue;
-		}
-		//TODO - you'll need some way of determining
-		//when a player has sent the server an acknowledgement
-		//and store the lastID somewhere. A map between player
-		//and an int could work, or it could be part of a 
-		//NetworkPlayer struct. 
-		int playerState = 0;
-		GamePacket* newPacket = nullptr;
-		if (o->WritePacket(&newPacket, deltaFrame, playerState)) {
-			thisServer->SendGlobalPacket(*newPacket);
-			delete newPacket;
-		}
-	}
+	//for (auto i = first; i != last; ++i) {
+	//	NetworkObject* o = (*i)->GetNetworkObject();
+	//	if (!o) {
+	//		continue;
+	//	}
+	//	//TODO - you'll need some way of determining
+	//	//when a player has sent the server an acknowledgement
+	//	//and store the lastID somewhere. A map between player
+	//	//and an int could work, or it could be part of a 
+	//	//NetworkPlayer struct. 
+	//	int playerState = 0;
+	//	GamePacket* newPacket = nullptr;
+	//	if (o->WritePacket(&newPacket, deltaFrame, playerState)) {
+	//		thisServer->SendGlobalPacket(*newPacket);
+	//		delete newPacket;
+	//	}
+	//}
 }
 
 void NetworkedGame::UpdateMinimumState() {
@@ -156,19 +145,26 @@ void NetworkedGame::StartLevel() {
 
 }
 
-void NetworkedGame::ReceivePacket(int type, GamePacket* payload, int source) {
+void NetworkedGame::ReceivePacketFromClient(GamePacket* payload, int source) {
 	
 }
 
+void NetworkedGame::ReceivePacketFromServer(GamePacket* payload) {
+	switch (payload->type) {
+		case BasicNetworkMessages::Message: {
+			std::cout << "Received message from server!\n";
+		}break;
+	}
+}
+
 void NetworkedGame::OnPlayerCollision(NetworkPlayer* a, NetworkPlayer* b) {
-	if (thisServer) { //detected a collision between players!
+//detected a collision between players!
+//Only servers should be in control of when this actually has an effect...
+	if (IsServer()) {
 		MessagePacket newPacket;
 		newPacket.messageID = COLLISION_MSG;
 		newPacket.playerID  = a->GetPlayerNum();
-
-		thisClient->SendPacket(newPacket);
-
-		newPacket.playerID = b->GetPlayerNum();
-		thisClient->SendPacket(newPacket);
+		//newPacket.playerID = b->GetPlayerNum();
+		BroadcastServerPacket(newPacket);
 	}
 }

@@ -1,6 +1,6 @@
 #pragma once
 #include "TutorialGame.h"
-#include "./Networking/NetworkBase.h"
+#include "./Networking/NetworkSystem.h"
 
 namespace NCL {
 	namespace CSC8503 {
@@ -8,13 +8,13 @@ namespace NCL {
 		class GameClient;
 		class NetworkPlayer;
 
-		class NetworkedGame : public TutorialGame, public PacketReceiver {
+		class NetworkedGame : public TutorialGame, public NetworkSystem {
 		public:
 			NetworkedGame(GameWorld& gameWorld, GameTechRendererInterface& renderer, PhysicsSystem& physics, Controller& gameController);
 			~NetworkedGame();
 
-			void StartAsServer();
-			void StartAsClient(char a, char b, char c, char d);
+			//void StartAsServer();
+			//void StartAsClient(char a, char b, char c, char d);
 
 			void UpdateGame(float dt) override;
 
@@ -22,7 +22,8 @@ namespace NCL {
 
 			void StartLevel();
 
-			void ReceivePacket(int type, GamePacket* payload, int source) override;
+			void ReceivePacketFromClient(GamePacket* payload, int source = -1) override;
+			void ReceivePacketFromServer(GamePacket* payload) override;
 
 			void OnPlayerCollision(NetworkPlayer* a, NetworkPlayer* b);
 
@@ -34,8 +35,6 @@ namespace NCL {
 			void UpdateMinimumState();
 			std::map<int, int> stateIDs;
 
-			GameServer* thisServer;
-			GameClient* thisClient;
 			float timeToNextPacket;
 			int packetsToSnapshot;
 

@@ -6,9 +6,6 @@
 #include "./AI/StateMachines/StateTransition.h"
 #include "./AI/StateMachines/State.h"
 
-#include "./Networking/GameServer.h"
-#include "./Networking/GameClient.h"
-
 #include "./AI/Navigation/NavigationGrid.h"
 #include "./AI/Navigation/NavigationMesh.h"
 
@@ -90,7 +87,9 @@ int main() {
 	c->MapAxis(3, "XLook");
 	c->MapAxis(4, "YLook");
 
-	std::unique_ptr<TutorialGame> game = std::make_unique<TutorialGame>(*world, *renderer, *physics, *c);
+#define GAME NetworkedGame
+
+	std::unique_ptr<GAME> game = std::make_unique<GAME>(*world, *renderer, *physics, *c);
 
 	w->GetTimer().GetTimeDeltaSeconds(); //Clear the timer so we don't get a larget first dt!
 	while (w->UpdateWindow() && !Window::GetKeyboard()->KeyDown(KeyCodes::ESCAPE)) {
