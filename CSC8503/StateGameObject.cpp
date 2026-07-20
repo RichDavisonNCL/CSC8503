@@ -1,7 +1,5 @@
 #include "StateGameObject.h"
-#include "./AI/StateMachines/StateTransition.h"
 #include "./AI/StateMachines/StateMachine.h"
-#include "./AI/StateMachines/State.h"
 #include "./Physics/PhysicsObject.h"
 
 using namespace NCL;

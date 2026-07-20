@@ -3,8 +3,6 @@
 #include "Debug.h"
 
 #include "./AI/StateMachines/StateMachine.h"
-#include "./AI/StateMachines/StateTransition.h"
-#include "./AI/StateMachines/State.h"
 
 #include "./AI/Navigation/NavigationGrid.h"
 #include "./AI/Navigation/NavigationMesh.h"
@@ -39,6 +37,23 @@ void TestPathfinding() {
 void DisplayPathfinding() {
 }
 
+void TestStateMachine() {
+	StateMachine testMachine;
+
+	float time = 0.0f;
+
+	int state0 = testMachine.AddState([&](float dt, bool initState) { if (initState) { time = 10.0f; } std::cout << "In state 0!\n";  });
+	int state1 = testMachine.AddState([&](float dt, bool initState) { if (initState) { time = 10.0f; } std::cout << "In state 1!\n";  });
+
+	testMachine.AddTransition(state0, state1, [&]()-> bool {return (time < 0.0f) ? true : false;  });
+	testMachine.AddTransition(state1, state0, [&]()-> bool {return (time < 0.0f) ? true : false;  });
+
+	for (int i = 0; i < 100; ++i) {
+		time -= 1.0f;
+		testMachine.Update(0.0f);
+	}
+}
+
 /*
 
 The main function should look pretty familar to you!
@@ -52,6 +67,9 @@ hide or show the
 
 */
 int main() {
+	TestStateMachine();
+	TestPathfinding();
+
 	NCL::WindowInitialisation windotInit{
 		.width = 1280,
 		.height = 720,
