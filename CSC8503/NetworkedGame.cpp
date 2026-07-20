@@ -38,7 +38,6 @@ void NetworkedGame::UpdateGame(float dt) {
 		timeToNextPacket += 1.0f / 20.0f; //20hz server/client update
 	}
 
-
 	if (IsServer()) {
 		UpdateAsServer(dt);
 	}
