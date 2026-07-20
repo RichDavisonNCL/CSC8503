@@ -1,6 +1,6 @@
 #pragma once
 #include "GameObject.h"
-#include "GameClient.h"
+#include "./Networking/GameClient.h"
 
 namespace NCL {
 	namespace CSC8503 {

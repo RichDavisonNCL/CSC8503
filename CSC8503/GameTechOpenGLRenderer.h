@@ -47,8 +47,8 @@ namespace NCL {
 			void SetDebugStringBufferSizes(size_t newVertCount);
 			void SetDebugLineBufferSizes(size_t newVertCount);
 
-			vector<const RenderObject*> activeOpaqueObjects;
-			vector<const RenderObject*> activeTransparentObjects;
+			std::vector<const RenderObject*> activeOpaqueObjects;
+			std::vector<const RenderObject*> activeTransparentObjects;
 
 
 			OGLShader*  debugShader;
@@ -69,11 +69,11 @@ namespace NCL {
 
 
 			//Debug data storage things
-			vector<Vector3> debugLineData;
+			std::vector<Vector3> debugLineData;
 
-			vector<Vector3> debugTextPos;
-			vector<Vector4> debugTextColours;
-			vector<Vector2> debugTextUVs;
+			std::vector<Vector3> debugTextPos;
+			std::vector<Vector4> debugTextColours;
+			std::vector<Vector2> debugTextUVs;
 
 			GLuint lineVAO			= 0;
 			GLuint lineVertVBO		= 0;

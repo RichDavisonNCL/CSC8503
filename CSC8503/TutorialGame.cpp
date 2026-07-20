@@ -1,11 +1,12 @@
 #include "TutorialGame.h"
 #include "GameWorld.h"
-#include "PhysicsObject.h"
-#include "RenderObject.h"
-#include "TextureLoader.h"
+#include "Debug.h"
 
-#include "PositionConstraint.h"
-#include "OrientationConstraint.h"
+#include "./Physics/PhysicsObject.h"
+#include "./Physics/PositionConstraint.h"
+#include "./Physics/OrientationConstraint.h"
+
+#include "RenderObject.h"
 #include "StateGameObject.h"
 
 using namespace NCL;
@@ -561,7 +562,7 @@ bool TutorialGame::SelectObject() {
 				selectionObject = nullptr;
 			}
 
-			Ray ray = CollisionDetection::BuildRayFromMouse(world.GetMainCamera());
+			Ray ray = NCL::CollisionDetection::BuildRayFromMouse(world.GetMainCamera());
 
 			RayCollision closestCollision;
 			if (world.Raycast(ray, closestCollision, true)) {
@@ -607,7 +608,7 @@ void TutorialGame::MoveSelectedObject() {
 	}
 	//Push the selected object!
 	if (Window::GetMouse()->ButtonPressed(NCL::MouseButtons::Right)) {
-		Ray ray = CollisionDetection::BuildRayFromMouse(world.GetMainCamera());
+		Ray ray = NCL::CollisionDetection::BuildRayFromMouse(world.GetMainCamera());
 
 		RayCollision closestCollision;
 		if (world.Raycast(ray, closestCollision, true)) {

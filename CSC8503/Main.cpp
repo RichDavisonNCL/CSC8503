@@ -2,27 +2,26 @@
 
 #include "Debug.h"
 
-#include "StateMachine.h"
-#include "StateTransition.h"
-#include "State.h"
+#include "./AI/StateMachines/StateMachine.h"
+#include "./AI/StateMachines/StateTransition.h"
+#include "./AI/StateMachines/State.h"
 
-#include "GameServer.h"
-#include "GameClient.h"
+#include "./Networking/GameServer.h"
+#include "./Networking/GameClient.h"
 
-#include "NavigationGrid.h"
-#include "NavigationMesh.h"
+#include "./AI/Navigation/NavigationGrid.h"
+#include "./AI/Navigation/NavigationMesh.h"
 
 #include "TutorialGame.h"
 #include "NetworkedGame.h"
 
-#include "PushdownMachine.h"
+#include "./AI/PushdownAutomata/PushdownMachine.h"
+#include "./AI/PushdownAutomata/PushdownState.h"
 
-#include "PushdownState.h"
-
-#include "BehaviourNode.h"
-#include "BehaviourSelector.h"
-#include "BehaviourSequence.h"
-#include "BehaviourAction.h"
+#include "./AI/BehaviourTrees/BehaviourNode.h"
+#include "./AI/BehaviourTrees/BehaviourSelector.h"
+#include "./AI/BehaviourTrees/BehaviourSequence.h"
+#include "./AI/BehaviourTrees/BehaviourAction.h"
 
 #include "GameTechOpenGLRenderer.h"
 #include "KeyboardMouseController.h"
@@ -36,10 +35,6 @@
 
 using namespace NCL;
 using namespace CSC8503;
-
-#include <chrono>
-#include <thread>
-#include <sstream>
 
 void TestPathfinding() {
 }

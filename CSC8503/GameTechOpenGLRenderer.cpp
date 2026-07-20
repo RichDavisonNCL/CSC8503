@@ -5,6 +5,8 @@
 #include "TextureLoader.h"
 #include "MshLoader.h"
 
+#include "Debug.h"
+
 using namespace NCL;
 using namespace Rendering;
 using namespace CSC8503;

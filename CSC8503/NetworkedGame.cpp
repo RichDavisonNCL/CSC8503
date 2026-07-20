@@ -1,11 +1,14 @@
 #include "NetworkedGame.h"
 #include "NetworkPlayer.h"
-#include "NetworkObject.h"
-#include "GameServer.h"
-#include "GameClient.h"
+#include "./Networking/NetworkObject.h"
+#include "./Networking/GameServer.h"
+#include "./Networking/GameClient.h"
 #include "../NCLCoreClasses/Window.h"
 
 #define COLLISION_MSG 30
+
+using namespace NCL;
+using namespace CSC8503;
 
 struct MessagePacket : public GamePacket {
 	short playerID;
