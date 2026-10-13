@@ -1,4 +1,5 @@
 #pragma once
+#ifdef USE_OPENGL
 #include "GameTechRendererInterface.h"
 #include "OGLRenderer.h"
 #include "OGLShader.h"
@@ -87,4 +88,4 @@ namespace NCL {
 		};
 	}
 }
-
+#endif //USE_OPENGL

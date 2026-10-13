@@ -1,3 +1,4 @@
+#ifdef USE_OPENGL
 #include "GameTechOpenGLRenderer.h"
 #include "GameObject.h"
 #include "RenderObject.h"
@@ -544,3 +545,5 @@ void GameTechOpenGLRenderer::SetDebugLineBufferSizes(size_t newVertCount) {
 		glBindVertexArray(0);
 	}
 }
+
+#endif //USE_OPENGL

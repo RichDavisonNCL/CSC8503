@@ -1,21 +1,22 @@
 #pragma once
-#ifdef USEVULKAN
+#ifdef USE_VULKAN
+#include "GameTechRendererInterface.h"
 #include "VulkanRenderer.h"
 #include "VulkanMesh.h"
 #include "GameWorld.h"
 
-namespace NCL::Rendering {
-	class TextureBase;
-	class ShaderBase;
-	class GameTechVulkanRenderer : public VulkanRenderer
+namespace NCL::CSC8503 {
+	class RenderObject;
+
+	using namespace Vulkan;
+	class GameTechVulkanRenderer : public GameTechRendererInterface
 	{
 	public:
 		GameTechVulkanRenderer(GameWorld& world);
 		~GameTechVulkanRenderer();
 
-		MeshGeometry*	LoadMesh(const string& name);
-		TextureBase*	LoadTexture(const string& name);
-		ShaderBase*		LoadShader(const string& vertex, const string& fragment);
+		Mesh*		LoadMesh(const string& name)			override;
+		Texture*	LoadTexture(const std::string& name)	override;
 
 	protected:
 		struct GlobalData {
@@ -40,8 +41,8 @@ namespace NCL::Rendering {
 			VulkanTexture* cachedTex;
 			int index;
 		};
-
-		class VulkanGameTechTexture : public NCL::Rendering::VulkanTexture
+	
+		class VulkanGameTechTexture : public NCL::Rendering::Vulkan::VulkanTexture
 		{
 			friend class GameTechVulkanRenderer;
 		public:
@@ -100,12 +101,21 @@ namespace NCL::Rendering {
 		FrameData* allFrames;
 		FrameData* currentFrame;
 
-		void RenderFrame()	override;
+		void RenderFrame();
 
 		//void RenderFrame(float dt)	override;
 		//	Update(dt);
 		//	Render();
 		//}
+
+		UniqueVulkanTexture LoadCubemap(
+			const std::string& negativeXFile, const std::string& positiveXFile,
+			const std::string& negativeYFile, const std::string& positiveYFile,
+			const std::string& negativeZFile, const std::string& positiveZFile,
+			const std::string& debugName = "CubeMap");
+
+		UniqueVulkanTexture LoadTextureInternal(const string& filename);
+
 
 		void BuildScenePipelines(VulkanMesh* m);
 		void BuildDebugPipelines();
@@ -120,8 +130,10 @@ namespace NCL::Rendering {
 
 		UniqueVulkanMesh GenerateQuad();
 
+		void UploadMeshWait(VulkanMesh& m, vk::BufferUsageFlags bufferUsage = {});
+
 		GameWorld& gameWorld;
-		vector<const RenderObject*> activeObjects;
+		std::vector<const RenderObject*> activeObjects;
 		int currentFrameIndex;
 
 		VulkanPipeline	skyboxPipeline;
@@ -130,31 +142,27 @@ namespace NCL::Rendering {
 		VulkanPipeline	debugLinePipeline;
 		VulkanPipeline	debugTextPipeline;
 
-		UniqueVulkanShader skyboxShader;
-		UniqueVulkanShader shadowShader;
-		UniqueVulkanShader sceneShader;
-
-		UniqueVulkanShader debugLineShader;
-		UniqueVulkanShader debugTextShader;
-
 		UniqueVulkanMesh	quadMesh;
 		UniqueVulkanTexture	cubeTex;
 
 		UniqueVulkanTexture shadowMap;
 		UniqueVulkanTexture defaultTexture;
+
+		VulkanRenderer*		vkQuickInstance;
+		VulkanMemoryManager* memoryManager;
 	
 		vk::Viewport	shadowViewport;
 		vk::Rect2D		shadowScissor;
 
-		vk::UniqueDescriptorSetLayout globalDataLayout;
 		vk::UniqueDescriptorSetLayout objectTextxureLayout;
+
 		vk::UniqueDescriptorSet objectTextxureDescriptor;
 
 		vk::UniqueSampler	defaultSampler;
 		vk::UniqueSampler	textSampler;
 
-		vector<VulkanTexture*> loadedTextures;
+		std::vector<UniqueVulkanTexture> loadedTextures;
 	};
 }
-#endif
+#endif //USE_VULKAN
 

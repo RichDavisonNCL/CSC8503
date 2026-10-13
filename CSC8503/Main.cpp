@@ -88,9 +88,10 @@ int main() {
 	std::unique_ptr<GameWorld>		world = std::make_unique<GameWorld>();
 	std::unique_ptr<PhysicsSystem>	physics = std::make_unique<PhysicsSystem>(*world);
 
-#ifdef USEVULKAN
+#ifdef USE_VULKAN
 	std::unique_ptr<GameTechRendererInterface> renderer = std::make_unique<GameTechVulkanRenderer>(*world);
-#else	
+#endif
+#ifdef USE_OPENGL
 	std::unique_ptr<GameTechRendererInterface> renderer = std::make_unique<GameTechOpenGLRenderer>(*world);
 #endif
 

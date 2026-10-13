@@ -1,9 +1,13 @@
+#ifdef USE_VULKAN
+
 #include "GameTechVulkanRenderer.h"
 #include "GameObject.h"
 #include "RenderObject.h"
 #include "Camera.h"
 #include "VulkanUtils.h"
-#ifdef USEVULKAN
+#include "VulkanVMAMemoryManager.h"
+#include "Debug.h"
+
 using namespace NCL;
 using namespace Rendering;
 using namespace CSC8503;
@@ -16,25 +20,26 @@ const int _TEXCOUNT = 128;
 const size_t lineStride = sizeof(Vector4) + sizeof(Vector4);
 const size_t textStride = sizeof(Vector2) + sizeof(Vector4) + sizeof(Vector2);
 
-GameTechVulkanRenderer::GameTechVulkanRenderer(GameWorld& world) : VulkanRenderer(*Window::GetWindow()), gameWorld(world) {
-	globalDataLayout = VulkanDescriptorSetLayoutBuilder("Global Data Layout")
-		.WithUniformBuffers(1)	//0: The global data uniform buffer
-		.WithStorageBuffers(1)	//1: The list of object states
-		.WithSamplers(1)		//2: The scene shadow map
-		.WithSamplers(1)		//3: The scene cubemap
+GameTechVulkanRenderer::GameTechVulkanRenderer(GameWorld& world) : gameWorld(world) {
+	VulkanInitialisation vkInit;
 
-		.Build(device);
+	vkQuickInstance = new VulkanRenderer(*Window::GetWindow(), vkInit);
+	memoryManager	= new VulkanVMAMemoryManager(vkQuickInstance->GetDevice(), vkQuickInstance->GetPhysicalDevice(), vkQuickInstance->GetVulkanInstance(), vkInit);
 
-	objectTextxureLayout = VulkanDescriptorSetLayoutBuilder("Object Texture Layout")
-		.WithSamplers(_TEXCOUNT)		//0: Object textures live here
-		.Build(device);
+	FrameContext const& context = vkQuickInstance->GetFrameContext();
+	const vk::Device device = context.device;
 
-	objectTextxureDescriptor = BuildUniqueDescriptorSet(*objectTextxureLayout);
+	objectTextxureLayout = DescriptorSetLayoutBuilder(context.device)
+		.WithImageSamplers(0, _TEXCOUNT, vk::ShaderStageFlagBits::eFragment, vk::DescriptorBindingFlagBits::ePartiallyBound | vk::DescriptorBindingFlagBits::eVariableDescriptorCount)
+		.WithCreationFlags(vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool)
+		.Build("Bindless Data");
 
-	defaultTexture = VulkanTexture::TextureFromFile("Default.png");
-	loadedTextures.push_back(&(*defaultTexture)); //Default will always be index 0!
+	objectTextxureDescriptor = CreateDescriptorSet(context.device, context.descriptorPool, *objectTextxureLayout, _TEXCOUNT);
 
-	defaultSampler = GetDevice().createSamplerUnique(
+	defaultTexture = LoadTextureInternal("Default.png");
+	loadedTextures.push_back(defaultTexture); //Default will always be index 0!
+
+	defaultSampler = device.createSamplerUnique(
 		vk::SamplerCreateInfo()
 		.setAnisotropyEnable(false)
 		.setMaxAnisotropy(16)
@@ -44,10 +49,10 @@ GameTechVulkanRenderer::GameTechVulkanRenderer(GameWorld& world) : VulkanRendere
 		.setMaxLod(80.0f)
 	);
 	for (int i = 0; i < _TEXCOUNT; ++i) {
-		UpdateImageDescriptor(*objectTextxureDescriptor, 0, i, defaultTexture->GetDefaultView(), *defaultSampler);
+		WriteCombinedImageDescriptor(context.device, *objectTextxureDescriptor, 0, i, defaultTexture->GetDefaultView(), *defaultSampler);
 	}
 
-	textSampler = GetDevice().createSamplerUnique(
+	textSampler = device.createSamplerUnique(
 		vk::SamplerCreateInfo()
 		.setAnisotropyEnable(false)
 		.setMaxAnisotropy(1)
@@ -60,45 +65,38 @@ GameTechVulkanRenderer::GameTechVulkanRenderer(GameWorld& world) : VulkanRendere
 	{//Setting up the data for the skybox
 		quadMesh = GenerateQuad();
 
-		cubeTex = VulkanTexture::VulkanCubemapFromFiles(
+		cubeTex = LoadCubemap(
 			"Cubemap/skyrender0004.png", "Cubemap/skyrender0001.png",
 			"Cubemap/skyrender0003.png", "Cubemap/skyrender0006.png",
 			"Cubemap/skyrender0002.png", "Cubemap/skyrender0005.png",
 			"Cubemap Texture!"
 		);
 
-		skyboxShader = VulkanShaderBuilder("Basic Shader!")
-			.WithVertexBinary("skybox.vert.spv")
-			.WithFragmentBinary("skybox.frag.spv")
-			.Build(device);
-
-		skyboxPipeline = VulkanPipelineBuilder("CubeMapRenderer Skybox Pipeline")
+		skyboxPipeline = PipelineBuilder(context.device)
 			.WithVertexInputState(quadMesh->GetVertexInputState())
 			.WithTopology(quadMesh->GetVulkanTopology())
-			.WithShader(skyboxShader)
-			.WithDepthState(vk::CompareOp::eAlways, true, false, false)
-			.WithColourFormats({ surfaceFormat })
-			.WithDepthStencilFormat(depthBuffer->GetFormat())
-			.WithDescriptorSetLayout(*globalDataLayout) //Set 0
-			.Build(device, pipelineCache);
+
+			.WithShaderBinary("skybox.vert.spv", vk::ShaderStageFlagBits::eVertex)
+			.WithShaderBinary("skybox.frag.spv", vk::ShaderStageFlagBits::eFragment)
+
+			.WithColourAttachment(context.colourFormat)
+			.WithDepthAttachment(context.depthFormat)
+		.Build("CubeMapRenderer Skybox Pipeline");
 	}
 	 
 	{//Setting up all the data we need for shadow maps!
-		shadowShader = VulkanShaderBuilder("Shadow Fill Shader")
-			.WithVertexBinary("Shadow.vert.spv")
-			.WithFragmentBinary("Shadow.frag.spv")
-			.Build(device);
+		shadowMap = TextureBuilder(context.device, *memoryManager)
+			.WithCommandBuffer(context.cmdBuffer)
+			.WithDimension(_SHADOWSIZE, _SHADOWSIZE)
+			.WithAspects(vk::ImageAspectFlagBits::eDepth)
+			.WithFormat(vk::Format::eD32Sfloat)
+			.WithLayout(vk::ImageLayout::eDepthAttachmentOptimal)
+			.WithUsages(vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled)
+			.WithMips(false)
+		.Build("Shadowmap");
 
-		shadowMap = VulkanTexture::CreateDepthTexture(_SHADOWSIZE, _SHADOWSIZE, "Shadow Map", false);
-
-		shadowViewport = vk::Viewport(0.0f, (float)_SHADOWSIZE, (float)_SHADOWSIZE, -(float)_SHADOWSIZE, 0.0f, 1.0f);
-		shadowScissor = vk::Rect2D(vk::Offset2D(0, 0), vk::Extent2D(_SHADOWSIZE, _SHADOWSIZE));
-	}
-	{//
-		sceneShader = VulkanShaderBuilder("Scene Shader")
-			.WithVertexBinary("Scene.vert.spv")
-			.WithFragmentBinary("Scene.frag.spv")
-			.Build(device);
+		shadowViewport	= vk::Viewport(0.0f, (float)_SHADOWSIZE, (float)_SHADOWSIZE, -(float)_SHADOWSIZE, 0.0f, 1.0f);
+		shadowScissor	= vk::Rect2D(vk::Offset2D(0, 0), vk::Extent2D(_SHADOWSIZE, _SHADOWSIZE));
 	}
 	{//Data structures used by the debug drawing
 		BuildDebugPipelines();
@@ -113,14 +111,26 @@ GameTechVulkanRenderer::GameTechVulkanRenderer(GameWorld& world) : VulkanRendere
 			allFrames[i].debugVertSize = 10000;
 			allFrames[i].objectCount = 1024;
 
-			allFrames[i].dataBuffer = CreateBuffer(1024 * 1024 * 64, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eHostVisible);
-			allFrames[i].data = (char*)device.mapMemory(*allFrames[i].dataBuffer.deviceMem, 0, allFrames[i].dataBuffer.allocInfo.allocationSize);
+
+
+			allFrames[i].dataBuffer = memoryManager->CreateBuffer(
+				{
+					.size = sizeof(1024 * 1024 * 64),
+					.usage =	vk::BufferUsageFlagBits::eStorageBuffer | 
+								vk::BufferUsageFlagBits::eUniformBuffer | 
+								vk::BufferUsageFlagBits::eVertexBuffer
+				},
+				vk::MemoryPropertyFlagBits::eHostVisible,
+				"Frame Data"
+			);
+
+			allFrames[i].data = (char*)allFrames[i].dataBuffer.Map();
 			allFrames[i].dataStart = allFrames[i].data;
 
-			allFrames[i].dataDescriptor = BuildUniqueDescriptorSet(*globalDataLayout);
+			allFrames[i].dataDescriptor = CreateDescriptorSet(context.device, context.descriptorPool, scenePipeline.GetSetLayout(0)); //Both use compatible layout
 
-			UpdateImageDescriptor(*allFrames[i].dataDescriptor, 2, 0, shadowMap->GetDefaultView(), *defaultSampler, vk::ImageLayout::eDepthStencilReadOnlyOptimal);
-			UpdateImageDescriptor(*allFrames[i].dataDescriptor, 3, 0, cubeTex->GetDefaultView(), *defaultSampler);
+			WriteCombinedImageDescriptor(device, *allFrames[i].dataDescriptor, 2, 0, shadowMap->GetDefaultView(), *defaultSampler, vk::ImageLayout::eDepthStencilReadOnlyOptimal);
+			WriteCombinedImageDescriptor(device, *allFrames[i].dataDescriptor, 3, 0, cubeTex->GetDefaultView(), *defaultSampler);
 		}
 	}
 	currentFrameIndex = 0;
@@ -133,42 +143,48 @@ GameTechVulkanRenderer::~GameTechVulkanRenderer() {
 //Defer making the scene pipelines until a mesh has been loaded
 //We're assuming that all loaded meshes have the same vertex format...
 void GameTechVulkanRenderer::BuildScenePipelines(VulkanMesh* m) {
-	scenePipeline = VulkanPipelineBuilder("Main Scene Pipeline")
-		.WithVertexInputState(m->GetVertexInputState())
-		.WithTopology(vk::PrimitiveTopology::eTriangleList)
-		.WithShader(sceneShader)
-		.WithBlendState(vk::BlendFactor::eSrcAlpha, vk::BlendFactor::eOneMinusSrcAlpha, false)
-		.WithDepthState(vk::CompareOp::eLessOrEqual, true, true, false)
-		.WithColourFormats({ surfaceFormat })
-		.WithDepthStencilFormat(depthBuffer->GetFormat())
-		.WithDescriptorSetLayout(*globalDataLayout)
-		.WithDescriptorSetLayout(*objectTextxureLayout) //Set 1
-		.WithPushConstant(vk::ShaderStageFlagBits::eVertex, 0, sizeof(Matrix4))
-		.Build(device, pipelineCache);
+	FrameContext const& context = vkQuickInstance->GetFrameContext();
+	const vk::Device device = context.device;
 
-	shadowPipeline = VulkanPipelineBuilder("Shadow Map Pipeline")
+	scenePipeline = PipelineBuilder(device)
 		.WithVertexInputState(m->GetVertexInputState())
 		.WithTopology(vk::PrimitiveTopology::eTriangleList)
-		.WithShader(shadowShader)
-		.WithPushConstant(vk::ShaderStageFlagBits::eVertex, 0, sizeof(Matrix4))
-		.WithDescriptorSetLayout(*globalDataLayout)
-		.WithDescriptorSetLayout(*objectTextxureLayout) //Set 1
-		.WithDepthState(vk::CompareOp::eLessOrEqual, true, true)
-		.WithDepthFormat(shadowMap->GetFormat())
-		.WithRaster(vk::CullModeFlagBits::eFront)
-		.Build(device, pipelineCache);
+		.WithShaderBinary("scene.vert.spv", vk::ShaderStageFlagBits::eVertex)
+		.WithShaderBinary("scene.frag.spv", vk::ShaderStageFlagBits::eFragment)
+
+		.WithColourAttachment(context.colourFormat, vk::BlendFactor::eSrcAlpha, vk::BlendFactor::eOneMinusSrcAlpha)
+		.WithDepthAttachment(context.depthFormat, vk::CompareOp::eLessOrEqual, true, true)
+		//.WithDescriptorSetLayout(*globalDataLayout)
+		.WithDescriptorSetLayout(1, *objectTextxureLayout) //Set 1
+		//.WithPushConstant(vk::ShaderStageFlagBits::eVertex, 0, sizeof(Matrix4))
+	.Build("Main Scene Pipeline");
+
+	shadowPipeline = PipelineBuilder(device)
+		.WithVertexInputState(m->GetVertexInputState())
+		.WithTopology(vk::PrimitiveTopology::eTriangleList)
+		.WithShaderBinary("shadow.vert.spv", vk::ShaderStageFlagBits::eVertex)
+		.WithShaderBinary("shadow.frag.spv", vk::ShaderStageFlagBits::eFragment)
+//		.WithDescriptorSetLayout(*globalDataLayout)
+		.WithDescriptorSetLayout(1, *objectTextxureLayout) //Set 1
+		.WithDepthAttachment(shadowMap->GetFormat(), vk::CompareOp::eLessOrEqual, true, true)
+
+		.WithRasterState(vk::CullModeFlagBits::eFront)
+	.Build("Shadow Map Pipeline");
 }
 
 void GameTechVulkanRenderer::BuildDebugPipelines() {
-	debugLineShader = VulkanShaderBuilder("Debug Line Shader")
-		.WithVertexBinary("Debug.vert.spv")
-		.WithFragmentBinary("Debug.frag.spv")
-		.Build(device);
+	FrameContext const& context = vkQuickInstance->GetFrameContext();
+	const vk::Device device = context.device;
 
-	debugTextShader = VulkanShaderBuilder("Debug Text Shader")
-		.WithVertexBinary("DebugText.vert.spv")
-		.WithFragmentBinary("DebugText.frag.spv")
-		.Build(device);
+	//debugLineShader = VulkanShaderBuilder("Debug Line Shader")
+	//	.WithVertexBinary("Debug.vert.spv")
+	//	.WithFragmentBinary("Debug.frag.spv")
+	//	.Build(device);
+
+	//debugTextShader = VulkanShaderBuilder("Debug Text Shader")
+	//	.WithVertexBinary("DebugText.vert.spv")
+	//	.WithFragmentBinary("DebugText.frag.spv")
+	//	.Build(device);
 
 	vk::VertexInputAttributeDescription debugLineVertAttribs[2] = {
 		//Shader input, binding, format, offset
@@ -199,46 +215,62 @@ void GameTechVulkanRenderer::BuildDebugPipelines() {
 	vk::PipelineVertexInputStateCreateInfo lineVertexState({}, debugLineVertBindings, debugLineVertAttribs);
 	vk::PipelineVertexInputStateCreateInfo textVertexState({}, debugTextVertBindings, debugTextVertAttribs);
 
-	debugLinePipeline = VulkanPipelineBuilder("Debug Line Pipeline")
+	debugLinePipeline = PipelineBuilder(device)
 		.WithVertexInputState(lineVertexState)
 		.WithTopology(vk::PrimitiveTopology::eLineList)
-		.WithShader(debugLineShader)
-		.WithColourFormats({ surfaceFormat })
-		.WithDepthStencilFormat(depthBuffer->GetFormat())
-		.WithDescriptorSetLayout(*globalDataLayout)		//Set 0
-		.WithDescriptorSetLayout(*objectTextxureLayout) //Set 1
-		.Build(device, pipelineCache);
 
-	debugTextPipeline = VulkanPipelineBuilder("Debug Text Pipeline")
+		.WithShaderBinary("debug.vert.spv", vk::ShaderStageFlagBits::eVertex)
+		.WithShaderBinary("debug.frag.spv", vk::ShaderStageFlagBits::eFragment)
+
+		.WithColourAttachment(context.colourFormat, vk::BlendFactor::eSrcAlpha, vk::BlendFactor::eOneMinusSrcAlpha)
+		.WithDepthAttachment(context.depthFormat, vk::CompareOp::eLessOrEqual, true, true)
+
+		//.WithColourFormats({ surfaceFormat })
+		//.WithDepthStencilFormat(depthBuffer->GetFormat())
+		//.WithDescriptorSetLayout(*globalDataLayout)		//Set 0
+		.WithDescriptorSetLayout(1, *objectTextxureLayout) //Set 1
+		.Build("Debug Line Pipeline");
+
+	debugTextPipeline = PipelineBuilder(device)
 		.WithVertexInputState(textVertexState)
 		.WithTopology(vk::PrimitiveTopology::eTriangleList)
-		.WithShader(debugTextShader)
-		.WithColourFormats({ surfaceFormat })
-		.WithDepthStencilFormat(depthBuffer->GetFormat())
-		.WithDescriptorSetLayout(*globalDataLayout)		//Set 0
-		.WithDescriptorSetLayout(*objectTextxureLayout) //Set 1
-		.WithPushConstant(vk::ShaderStageFlagBits::eFragment, 0, sizeof(int)) //TexID to use
-		.Build(device, pipelineCache);
+	
+		.WithShaderBinary("debugText.vert.spv", vk::ShaderStageFlagBits::eVertex)
+		.WithShaderBinary("debugText.frag.spv", vk::ShaderStageFlagBits::eFragment)
+
+		.WithColourAttachment(context.colourFormat, vk::BlendFactor::eSrcAlpha, vk::BlendFactor::eOneMinusSrcAlpha)
+		.WithDepthAttachment(context.depthFormat, vk::CompareOp::eLessOrEqual, true, true)
+
+		//.WithColourFormats({ surfaceFormat })
+		//.WithDepthStencilFormat(depthBuffer->GetFormat())
+		//.WithDescriptorSetLayout(*globalDataLayout)		//Set 0
+		.WithDescriptorSetLayout(1, *objectTextxureLayout) //Set 1
+		//.WithPushConstant(vk::ShaderStageFlagBits::eFragment, 0, sizeof(int)) //TexID to use
+		.Build("Debug Text Pipeline");
 }
 
 void GameTechVulkanRenderer::RenderFrame() {
-	TransitionSwapchainForRendering(defaultCmdBuffer);
+	//TransitionSwapchainForRendering(defaultCmdBuffer);
+
+	FrameContext const& context = vkQuickInstance->GetFrameContext();
+	vk::CommandBuffer cmdBuffer = context.cmdBuffer;
+
 
 	int texID = _TEXCOUNT - 1;
 	VulkanTexture* tex = (VulkanTexture*)Debug::GetDebugFont()->GetTexture();
-	UpdateImageDescriptor(*objectTextxureDescriptor, 0, texID, tex->GetDefaultView(), *textSampler);
+	//UpdateImageDescriptor(*objectTextxureDescriptor, 0, texID, tex->GetDefaultView(), *textSampler);
 
 	GlobalData frameData;
 	frameData.lightColour = lightColour;
 	frameData.lightRadius = lightRadius;
 	frameData.lightPosition = lightPosition;
-	frameData.cameraPos		= gameWorld.GetMainCamera()->GetPosition();
+	frameData.cameraPos		= gameWorld.GetMainCamera().GetPosition();
 
-	frameData.viewMatrix	= gameWorld.GetMainCamera()->BuildViewMatrix();
-	frameData.projMatrix	= gameWorld.GetMainCamera()->BuildProjectionMatrix(hostWindow.GetScreenAspect());
-	frameData.orthoMatrix	= Matrix4::Orthographic(0.0, 100.0f, 100, 0, -1.0f, 1.0f);
-	frameData.shadowMatrix  =	Matrix4::Perspective(50.0f, 500.0f, 1, 45.0f) * 
-								Matrix4::BuildViewMatrix(frameData.lightPosition, Vector3(0, 0, 0), Vector3(0, 1, 0));
+	frameData.viewMatrix	= gameWorld.GetMainCamera().BuildViewMatrix();
+	frameData.projMatrix	= gameWorld.GetMainCamera().BuildProjectionMatrix(Window::GetWindow()->GetScreenAspect());
+	frameData.orthoMatrix	= Matrix::Orthographic(0.0f, 100.0f, 100.0f, 0.0f, -1.0f, 1.0f);
+	frameData.shadowMatrix  =	Matrix::Perspective(50.0f, 500.0f, 1, 45.0f) * 
+								Matrix::View(frameData.lightPosition, Vector3(0, 0, 0), Vector3(0, 1, 0));
 
 	currentFrame->data				= currentFrame->dataStart;
 	currentFrame->bytesWritten		= 0;
@@ -257,45 +289,45 @@ void GameTechVulkanRenderer::RenderFrame() {
 
 	size_t objectSize = currentFrame->bytesWritten - currentFrame->objectStateOffset;
 
-	UpdateBufferDescriptorOffset(*currentFrame->dataDescriptor, currentFrame->dataBuffer, 0, vk::DescriptorType::eUniformBuffer, 0, sizeof(GlobalData));
-	UpdateBufferDescriptorOffset(*currentFrame->dataDescriptor, currentFrame->dataBuffer, 1, vk::DescriptorType::eStorageBuffer, currentFrame->objectStateOffset, objectSize);
+	//UpdateBufferDescriptorOffset(*currentFrame->dataDescriptor, currentFrame->dataBuffer, 0, vk::DescriptorType::eUniformBuffer, 0, sizeof(GlobalData));
+	//UpdateBufferDescriptorOffset(*currentFrame->dataDescriptor, currentFrame->dataBuffer, 1, vk::DescriptorType::eStorageBuffer, currentFrame->objectStateOffset, objectSize);
 
 	{//Render the shadow map for the frame	
-		VulkanDynamicRenderBuilder()
-			.WithDepthAttachment(shadowMap->GetDefaultView())
+		cmdBuffer.beginRendering(
+			DynamicRenderBuilder()
+			.WithDepthAttachment({
+				.imageView = *shadowMap->GetDefaultView(),
+				.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
+				.loadOp = vk::AttachmentLoadOp::eClear,
+				.clearValue = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f)
+				})
 			.WithRenderArea(shadowScissor)
-			.BeginRendering(defaultCmdBuffer);
+			.Build()
+		);
 
-		defaultCmdBuffer.setViewport(0, 1, &shadowViewport);
-		defaultCmdBuffer.setScissor(0, 1, &shadowScissor);
+		cmdBuffer.setViewport(0, 1, &shadowViewport);
+		cmdBuffer.setScissor( 0, 1, &shadowScissor);
 
-		RenderSceneObjects(shadowPipeline, defaultCmdBuffer); //Draw the shadow map
+		RenderSceneObjects(shadowPipeline, cmdBuffer); //Draw the shadow map
 
-		EndRendering(defaultCmdBuffer);
+		cmdBuffer.endRendering();
 	}
-	
+
 	//Now render the main scene view
-	TransitionDepthToSampler(&*shadowMap, defaultCmdBuffer);
+	TransitionDepthToSampler(cmdBuffer, *shadowMap);
 
-	defaultCmdBuffer.setViewport(0, 1, &defaultViewport);
-	defaultCmdBuffer.setScissor(0, 1, &defaultScissor);
+	vkQuickInstance->BeginRenderToScreen(cmdBuffer);
 
-	VulkanDynamicRenderBuilder()
-	.WithColourAttachment(swapChainList[currentSwap]->view)
-	.WithDepthAttachment(depthBuffer->GetDefaultView())
-	.WithRenderArea(defaultScreenRect)
-	.BeginRendering(defaultCmdBuffer);
-
-	RenderSkybox(defaultCmdBuffer);
-	RenderSceneObjects(scenePipeline, defaultCmdBuffer); //Draw the main scene
+	RenderSkybox(cmdBuffer);
+	RenderSceneObjects(scenePipeline, cmdBuffer); //Draw the main scene
 
 	UpdateDebugData();
-	RenderDebugLines(defaultCmdBuffer);
-	RenderDebugText(defaultCmdBuffer);
+	RenderDebugLines(cmdBuffer);
+	RenderDebugText(cmdBuffer);
 
-	EndRendering(defaultCmdBuffer);
+	cmdBuffer.endRendering();
 
-	TransitionSamplerToDepth(&*shadowMap, defaultCmdBuffer);
+	TransitionSamplerToDepth(cmdBuffer, *shadowMap);
 
 	currentFrameIndex = (currentFrameIndex + 1) % _FRAMECOUNT;
 	currentFrame = &allFrames[currentFrameIndex];
@@ -324,16 +356,16 @@ void GameTechVulkanRenderer::UpdateObjectList() {
 					activeObjects.emplace_back(g);
 
 					ObjectState state;
-					state.modelMatrix = g->GetTransform()->GetMatrix();
+					state.modelMatrix = g->GetTransform().GetMatrix();
 					state.colour = g->GetColour();
 					state.index[0] = 0;
 					if (g->GetMesh()) {
 						pipeMesh = (VulkanMesh*)g->GetMesh();
 					}
-					if (g->GetDefaultTexture()) {
-						VulkanGameTechTexture* t = (VulkanGameTechTexture*)g->GetDefaultTexture();
-						state.index[0] = t->index;
-					}
+					//if (g->GetDefaultTexture()) {
+					//	VulkanGameTechTexture* t = (VulkanGameTechTexture*)g->GetDefaultTexture();
+					//	state.index[0] = t->index;
+					//}
 					currentFrame->WriteData<ObjectState>(state);
 					currentFrame->debugLinesOffset += sizeof(ObjectState);
 					at++;
@@ -400,7 +432,11 @@ void GameTechVulkanRenderer::RenderSceneObjects(VulkanPipeline& pipe, vk::Comman
 		//The new mesh is different than previous meshes, flush out the old list
 		if (activeMesh != objectMesh) {
 			cmds.pushConstants(*pipe.layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(uint32_t), (void*)&startingIndex);
-			SubmitDrawCall(*activeMesh, cmds, count);
+
+			activeMesh->BindToCommandBuffer(cmds);
+			activeMesh->DrawAllLayers(cmds, count);
+
+			//SubmitDrawCall(*activeMesh, cmds, count);
 			activeMesh = objectMesh;
 			count = 1;
 			startingIndex = i;
@@ -408,7 +444,10 @@ void GameTechVulkanRenderer::RenderSceneObjects(VulkanPipeline& pipe, vk::Comman
 		}
 		if (i == activeObjects.size()-1) {
 			cmds.pushConstants(*pipe.layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(uint32_t), (void*)&startingIndex);
-			SubmitDrawCall(*objectMesh, cmds, count);
+			//SubmitDrawCall(*objectMesh, cmds, count);
+
+			activeMesh->BindToCommandBuffer(cmds);
+			activeMesh->DrawAllLayers(cmds, count);
 		}
 		else {
 			count += increment;
@@ -420,7 +459,9 @@ void GameTechVulkanRenderer::RenderSkybox(vk::CommandBuffer cmds) {
 	//First bit: Draw skybox!
 	cmds.bindPipeline(vk::PipelineBindPoint::eGraphics, *skyboxPipeline.pipeline);
 	cmds.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *skyboxPipeline.layout, 0, 1, &*currentFrame->dataDescriptor, 0, nullptr);
-	SubmitDrawCall(*quadMesh, cmds);
+	//SubmitDrawCall(*quadMesh, cmds);
+	quadMesh->BindToCommandBuffer(cmds);
+	quadMesh->DrawAllLayers(cmds);
 }
 
 void GameTechVulkanRenderer::RenderDebugLines(vk::CommandBuffer cmds) {
@@ -429,8 +470,8 @@ void GameTechVulkanRenderer::RenderDebugLines(vk::CommandBuffer cmds) {
 	cmds.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *debugLinePipeline.layout, 1, 1, &*objectTextxureDescriptor, 0, nullptr);
 
 	vk::Buffer attributeBuffers[2] = {
-		*currentFrame->dataBuffer.buffer,
-		*currentFrame->dataBuffer.buffer
+		currentFrame->dataBuffer.buffer,
+		currentFrame->dataBuffer.buffer
 	};
 
 	vk::DeviceSize attributeOffsets[2] = {
@@ -451,9 +492,9 @@ void GameTechVulkanRenderer::RenderDebugText(vk::CommandBuffer cmds) {
 	cmds.pushConstants(*debugTextPipeline.layout, vk::ShaderStageFlagBits::eFragment, 0, sizeof(uint32_t), (void*)&texID);
 
 	vk::Buffer attributeBuffers[3] = {
-		*currentFrame->dataBuffer.buffer,
-		*currentFrame->dataBuffer.buffer,
-		*currentFrame->dataBuffer.buffer
+		currentFrame->dataBuffer.buffer,
+		currentFrame->dataBuffer.buffer,
+		currentFrame->dataBuffer.buffer
 	};
 
 	vk::DeviceSize attributeOffsets[3] = {
@@ -466,29 +507,14 @@ void GameTechVulkanRenderer::RenderDebugText(vk::CommandBuffer cmds) {
 	cmds.draw((uint32_t)currentFrame->textVertCount, 1, 0, 0);
 }
 
-MeshGeometry* GameTechVulkanRenderer::LoadMesh(const string& name) {
+Mesh* GameTechVulkanRenderer::LoadMesh(const string& name) {
 	VulkanMesh* newMesh = new VulkanMesh(name);
 	newMesh->SetPrimitiveType(NCL::GeometryPrimitive::Triangles);
 	newMesh->SetDebugName(name);
-	newMesh->UploadToGPU(this);
+	//newMesh->UploadToGPU(this);
+
+	UploadMeshWait(*newMesh);
 	return newMesh;
-}
-
-TextureBase* GameTechVulkanRenderer::LoadTexture(const string& name) {
-	VulkanGameTechTexture* t = new VulkanGameTechTexture(name);
-	//Write the texture to our big descriptor set
-	UpdateImageDescriptor(*objectTextxureDescriptor, 0, (int)loadedTextures.size(), t->GetDefaultView(), *defaultSampler);
-	t->index = loadedTextures.size();
-	loadedTextures.push_back(t);
-	return t;
-}
-
-ShaderBase* GameTechVulkanRenderer::LoadShader(const string& vertex, const string& fragment) {
-	return VulkanShaderBuilder("Shader!")
-		.WithVertexBinary(vertex + ".spv")
-		.WithFragmentBinary(fragment + ".spv")
-		.Build(device).release();
-	return nullptr;
 }
 
 UniqueVulkanMesh GameTechVulkanRenderer::GenerateQuad() {
@@ -498,8 +524,91 @@ UniqueVulkanMesh GameTechVulkanRenderer::GenerateQuad() {
 	quadMesh->SetVertexIndices({ 0,1,3,2 });
 	quadMesh->SetDebugName("Fullscreen Quad");
 	quadMesh->SetPrimitiveType(NCL::GeometryPrimitive::TriangleStrip);
-	quadMesh->UploadToGPU(this);
+	//quadMesh->UploadToGPU(this);
+
+	UploadMeshWait(*quadMesh);
 
 	return UniqueVulkanMesh(quadMesh);
 }
-#endif
+
+Texture* GameTechVulkanRenderer::LoadTexture(const string& name) {
+	FrameContext const& context = vkQuickInstance->GetFrameContext();
+
+	UniqueVulkanTexture tex = LoadTextureInternal(name);
+
+	tex->SetAssetID(loadedTextures.size());
+
+	//Write the texture to our big descriptor set
+	WriteCombinedImageDescriptor(context.device, *objectTextxureDescriptor, 0, (int)loadedTextures.size(), tex->GetDefaultView(), *defaultSampler);
+
+	loadedTextures.emplace_back(tex);
+	return (Texture*)tex.get();
+}
+
+UniqueVulkanTexture GameTechVulkanRenderer::LoadTextureInternal(const string& filename) {
+	FrameContext const& context = vkQuickInstance->GetFrameContext();
+	vk::UniqueCommandBuffer cmdBuffer = CmdBufferCreateBegin(context.device, context.commandPools[CommandType::Graphics], "VulkanTexture upload");
+
+	UniqueVulkanTexture tex = TextureBuilder(context.device, *memoryManager)
+		.WithCommandBuffer(*cmdBuffer)
+		.BuildFromFile(filename);
+
+	Vulkan::CmdBufferSubmit(
+		{
+			.buffer = *cmdBuffer,
+			.queue = context.queues[CommandType::Graphics],
+			.device = context.device,
+			.wait = true
+		}
+	);
+
+	return tex;
+}
+
+UniqueVulkanTexture GameTechVulkanRenderer::LoadCubemap(
+	const std::string& negativeXFile, const std::string& positiveXFile,
+	const std::string& negativeYFile, const std::string& positiveYFile,
+	const std::string& negativeZFile, const std::string& positiveZFile,
+	const std::string& debugName) {
+
+	FrameContext const& context = vkQuickInstance->GetFrameContext();
+	vk::UniqueCommandBuffer cmdBuffer = CmdBufferCreateBegin(context.device, context.commandPools[CommandType::Graphics], "VulkanTexture upload");
+
+	UniqueVulkanTexture tex = TextureBuilder(context.device, *memoryManager)
+		.WithCommandBuffer(*cmdBuffer)
+		.BuildCubemapFromFile(negativeXFile, positiveXFile,
+			negativeYFile, positiveYFile,
+			negativeZFile, positiveZFile,
+			debugName
+		);
+
+	Vulkan::CmdBufferSubmit(
+		{
+			.buffer = *cmdBuffer,
+			.queue	= context.queues[CommandType::Graphics],
+			.device = context.device,
+			.wait	= true
+		}
+	);
+
+	return tex;
+}
+
+
+void GameTechVulkanRenderer::UploadMeshWait(VulkanMesh& m, vk::BufferUsageFlags flags) {
+	FrameContext const& context = vkQuickInstance->GetFrameContext();
+
+	vk::UniqueCommandBuffer cmdBuffer = CmdBufferCreateBegin(context.device, context.commandPools[CommandType::Graphics], "VulkanMesh upload");
+
+	m.UploadToGPU(*cmdBuffer, memoryManager, flags);
+
+	Vulkan::CmdBufferSubmit(
+		{
+			.buffer = *cmdBuffer,
+			.queue  = context.queues[CommandType::Graphics],
+			.device = context.device,
+			.wait	= true
+		}
+	);
+}
+#endif //USE_VULKAN

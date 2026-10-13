@@ -25,7 +25,7 @@ if(USE_VULKAN)
     list(APPEND Header_Files "GameTechVulkanRenderer.h")
     list(APPEND Source_Files "GameTechVulkanRenderer.cpp")
     file(GLOB SHADER_FILES ${ASSET_ROOT}/Shaders/VK/*.*)
-else()
+elseif(USE_OPENGL)
     list(APPEND Header_Files "GameTechOpenGLRenderer.h")
     list(APPEND Source_Files "GameTechOpenGLRenderer.cpp")
 endif()
@@ -95,13 +95,6 @@ add_executable(${PROJECT_NAME}  ${ALL_FILES})
 use_props(${PROJECT_NAME} "${CMAKE_CONFIGURATION_TYPES}" "${DEFAULT_CXX_PROPS}")
 set(ROOT_NAMESPACE CSC8503)
 
-#set_target_properties(${PROJECT_NAME} PROPERTIES
-#    VS_GLOBAL_KEYWORD "Win32Proj"
-#)
-#set_target_properties(${PROJECT_NAME} PROPERTIES
-#    INTERPROCEDURAL_OPTIMIZATION_RELEASE "TRUE"
-#)
-
 ################################################################################
 # Compile definitions
 ################################################################################
@@ -141,8 +134,6 @@ target_precompile_headers(${PROJECT_NAME} PRIVATE
     "../VulkanRendering/SmartTypes.h"
 
     "../VulkanRendering/VulkanRenderer.h"
-    "../VulkanRendering/VulkanShader.h"
-    "../VulkanRendering/VulkanShaderBuilder.h"
     "../VulkanRendering/VulkanTexture.h"
     "../VulkanRendering/VulkanMesh.h"
     "../VulkanRendering/VulkanPipelineBuilder.h"
@@ -151,42 +142,9 @@ target_precompile_headers(${PROJECT_NAME} PRIVATE
     "../VulkanRendering/VulkanDescriptorSetLayoutBuilder.h"
     "../VulkanRendering/VulkanRenderPassBuilder.h"
 
-    "../VulkanRendering/VulkanCompute.h"
     "../VulkanRendering/VulkanComputePipelineBuilder.h"
 )
 endif()
-
-################################################################################
-# Compile and link options
-################################################################################
-#if(MSVC)
-#    target_compile_options(${PROJECT_NAME} PRIVATE
-#        $<$<CONFIG:Release>:
-#            /Oi;
-#            /Gy
-#        >
-#        /permissive-;
-#        /std:c++latest;
-#        /sdl;
-#        /W3;
-#        ${DEFAULT_CXX_DEBUG_INFORMATION_FORMAT};
-#        ${DEFAULT_CXX_EXCEPTION_HANDLING};
-#        /Y-
-#    )
-#    target_link_options(${PROJECT_NAME} PRIVATE
-#        $<$<CONFIG:Release>:
-#            /OPT:REF;
-#            /OPT:ICF
-#        >
-#    )
-#endif()
-#
-#################################################################################
-## Dependencies
-#################################################################################
-#if(MSVC)
-#    target_link_libraries(${PROJECT_NAME} LINK_PUBLIC  "Winmm.lib")
-#endif()
 
 include_directories("../NCLCoreClasses/")
 include_directories("../CSC8503CoreClasses/")
@@ -203,7 +161,7 @@ if(USE_VULKAN)
    #     DEPENDS ON ${SPIRV_BINARY_FILES}
    # )
    # add_dependencies(${PROJECT_NAME} SHADER_FILES)
-else()
+elseif(USE_OPENGL)
     include_directories("../OpenGLRendering/")
     target_link_libraries(${PROJECT_NAME} LINK_PUBLIC OpenGLRendering)
 endif()
