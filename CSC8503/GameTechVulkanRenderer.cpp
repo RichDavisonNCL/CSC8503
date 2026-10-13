@@ -4,9 +4,17 @@
 #include "GameObject.h"
 #include "RenderObject.h"
 #include "Camera.h"
-#include "VulkanUtils.h"
-#include "VulkanVMAMemoryManager.h"
 #include "Debug.h"
+
+#include "../VKQuick/Utils.h"
+#include "../VKQuick/TextureBuilder.h"
+#include "../VKQuick/VMAMemoryManager.h"
+
+#ifdef _WIN32
+#include "../NCLCoreClasses/Win32Window.h"
+#endif
+
+using namespace VKQuick;
 
 using namespace NCL;
 using namespace Rendering;
@@ -21,10 +29,19 @@ const size_t lineStride = sizeof(Vector4) + sizeof(Vector4);
 const size_t textStride = sizeof(Vector2) + sizeof(Vector4) + sizeof(Vector2);
 
 GameTechVulkanRenderer::GameTechVulkanRenderer(GameWorld& world) : gameWorld(world) {
-	VulkanInitialisation vkInit;
+	VKQuick::VKQuickInitialisation vkInit;
 
-	vkQuickInstance = new VulkanRenderer(*Window::GetWindow(), vkInit);
-	memoryManager	= new VulkanVMAMemoryManager(vkQuickInstance->GetDevice(), vkQuickInstance->GetPhysicalDevice(), vkQuickInstance->GetVulkanInstance(), vkInit);
+#ifdef _WIN32
+	Win32Code::Win32Window* hostWindow = (Win32Code::Win32Window*)Window::GetWindow();
+	vkInit.win32Handle = hostWindow->GetHandle();
+	vkInit.win32Instance = hostWindow->GetInstance();
+
+	vkInit.initialWidth = hostWindow->GetScreenSize().x;
+	vkInit.initialHeight = hostWindow->GetScreenSize().y;
+#endif
+
+	vkQuickInstance = new VKQuick::Instance(vkInit);
+
 
 	FrameContext const& context = vkQuickInstance->GetFrameContext();
 	const vk::Device device = context.device;
@@ -37,7 +54,8 @@ GameTechVulkanRenderer::GameTechVulkanRenderer(GameWorld& world) : gameWorld(wor
 	objectTextxureDescriptor = CreateDescriptorSet(context.device, context.descriptorPool, *objectTextxureLayout, _TEXCOUNT);
 
 	defaultTexture = LoadTextureInternal("Default.png");
-	loadedTextures.push_back(defaultTexture); //Default will always be index 0!
+
+	//loadedTextures.push_back(defaultTexture); //Default will always be index 0!
 
 	defaultSampler = device.createSamplerUnique(
 		vk::SamplerCreateInfo()
@@ -49,7 +67,7 @@ GameTechVulkanRenderer::GameTechVulkanRenderer(GameWorld& world) : gameWorld(wor
 		.setMaxLod(80.0f)
 	);
 	for (int i = 0; i < _TEXCOUNT; ++i) {
-		WriteCombinedImageDescriptor(context.device, *objectTextxureDescriptor, 0, i, defaultTexture->GetDefaultView(), *defaultSampler);
+		WriteCombinedImageDescriptor(context.device, *objectTextxureDescriptor, 0, i, defaultTexture->GetTex().GetDefaultView(), *defaultSampler);
 	}
 
 	textSampler = device.createSamplerUnique(
@@ -72,9 +90,9 @@ GameTechVulkanRenderer::GameTechVulkanRenderer(GameWorld& world) : gameWorld(wor
 			"Cubemap Texture!"
 		);
 
-		skyboxPipeline = PipelineBuilder(context.device)
-			.WithVertexInputState(quadMesh->GetVertexInputState())
-			.WithTopology(quadMesh->GetVulkanTopology())
+		skyboxPipeline = vkQuickInstance->PipelineBuilder()
+			.WithVertexInputState(quadMesh->GetMesh()->GetVertexInputState())
+			.WithTopology(quadMesh->GetPrimitiveTopology())
 
 			.WithShaderBinary("skybox.vert.spv", vk::ShaderStageFlagBits::eVertex)
 			.WithShaderBinary("skybox.frag.spv", vk::ShaderStageFlagBits::eFragment)
@@ -85,15 +103,16 @@ GameTechVulkanRenderer::GameTechVulkanRenderer(GameWorld& world) : gameWorld(wor
 	}
 	 
 	{//Setting up all the data we need for shadow maps!
-		shadowMap = TextureBuilder(context.device, *memoryManager)
-			.WithCommandBuffer(context.cmdBuffer)
-			.WithDimension(_SHADOWSIZE, _SHADOWSIZE)
-			.WithAspects(vk::ImageAspectFlagBits::eDepth)
-			.WithFormat(vk::Format::eD32Sfloat)
-			.WithLayout(vk::ImageLayout::eDepthAttachmentOptimal)
-			.WithUsages(vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled)
-			.WithMips(false)
-		.Build("Shadowmap");
+
+		//shadowMap = vkQuickInstance->TextureBuilder()
+		//	.WithCommandBuffer(context.cmdBuffer)
+		//	.WithDimension(_SHADOWSIZE, _SHADOWSIZE)
+		//	.WithAspects(vk::ImageAspectFlagBits::eDepth)
+		//	.WithFormat(vk::Format::eD32Sfloat)
+		//	.WithLayout(vk::ImageLayout::eDepthAttachmentOptimal)
+		//	.WithUsages(vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled)
+		//	.WithMips(false)
+		//.BuildEmpty("Shadowmap");
 
 		shadowViewport	= vk::Viewport(0.0f, (float)_SHADOWSIZE, (float)_SHADOWSIZE, -(float)_SHADOWSIZE, 0.0f, 1.0f);
 		shadowScissor	= vk::Rect2D(vk::Offset2D(0, 0), vk::Extent2D(_SHADOWSIZE, _SHADOWSIZE));
@@ -111,9 +130,7 @@ GameTechVulkanRenderer::GameTechVulkanRenderer(GameWorld& world) : gameWorld(wor
 			allFrames[i].debugVertSize = 10000;
 			allFrames[i].objectCount = 1024;
 
-
-
-			allFrames[i].dataBuffer = memoryManager->CreateBuffer(
+			allFrames[i].dataBuffer = vkQuickInstance->GetMemoryManager().CreateBuffer(
 				{
 					.size = sizeof(1024 * 1024 * 64),
 					.usage =	vk::BufferUsageFlagBits::eStorageBuffer | 
@@ -146,8 +163,8 @@ void GameTechVulkanRenderer::BuildScenePipelines(VulkanMesh* m) {
 	FrameContext const& context = vkQuickInstance->GetFrameContext();
 	const vk::Device device = context.device;
 
-	scenePipeline = PipelineBuilder(device)
-		.WithVertexInputState(m->GetVertexInputState())
+	scenePipeline = vkQuickInstance->PipelineBuilder()
+		.WithVertexInputState(m->GetMesh()->GetVertexInputState())
 		.WithTopology(vk::PrimitiveTopology::eTriangleList)
 		.WithShaderBinary("scene.vert.spv", vk::ShaderStageFlagBits::eVertex)
 		.WithShaderBinary("scene.frag.spv", vk::ShaderStageFlagBits::eFragment)
@@ -159,8 +176,8 @@ void GameTechVulkanRenderer::BuildScenePipelines(VulkanMesh* m) {
 		//.WithPushConstant(vk::ShaderStageFlagBits::eVertex, 0, sizeof(Matrix4))
 	.Build("Main Scene Pipeline");
 
-	shadowPipeline = PipelineBuilder(device)
-		.WithVertexInputState(m->GetVertexInputState())
+	shadowPipeline = vkQuickInstance->PipelineBuilder()
+		.WithVertexInputState(m->GetMesh()->GetVertexInputState())
 		.WithTopology(vk::PrimitiveTopology::eTriangleList)
 		.WithShaderBinary("shadow.vert.spv", vk::ShaderStageFlagBits::eVertex)
 		.WithShaderBinary("shadow.frag.spv", vk::ShaderStageFlagBits::eFragment)
@@ -212,10 +229,19 @@ void GameTechVulkanRenderer::BuildDebugPipelines() {
 		{2, textStride, vk::VertexInputRate::eVertex},//Colours
 	};
 
-	vk::PipelineVertexInputStateCreateInfo lineVertexState({}, debugLineVertBindings, debugLineVertAttribs);
-	vk::PipelineVertexInputStateCreateInfo textVertexState({}, debugTextVertBindings, debugTextVertAttribs);
+	vk::PipelineVertexInputStateCreateInfo lineVertexState = {
+		//.vertexBindingDescriptionCount = 3,
+		//.pVertexBindingDescriptions = &debugTextVertBindings
+		//.vertexAttributeDescriptionCount = 2,
+		//.pVertexAttributeDescriptions = &debugLineVertAttribs
+	};
 
-	debugLinePipeline = PipelineBuilder(device)
+	vk::PipelineVertexInputStateCreateInfo textVertexState = {
+
+	};
+	//({}, debugTextVertBindings, debugTextVertAttribs);
+
+	debugLinePipeline = vkQuickInstance->PipelineBuilder()
 		.WithVertexInputState(lineVertexState)
 		.WithTopology(vk::PrimitiveTopology::eLineList)
 
@@ -231,7 +257,7 @@ void GameTechVulkanRenderer::BuildDebugPipelines() {
 		.WithDescriptorSetLayout(1, *objectTextxureLayout) //Set 1
 		.Build("Debug Line Pipeline");
 
-	debugTextPipeline = PipelineBuilder(device)
+	debugTextPipeline = vkQuickInstance->PipelineBuilder()
 		.WithVertexInputState(textVertexState)
 		.WithTopology(vk::PrimitiveTopology::eTriangleList)
 	
@@ -249,7 +275,7 @@ void GameTechVulkanRenderer::BuildDebugPipelines() {
 		.Build("Debug Text Pipeline");
 }
 
-void GameTechVulkanRenderer::RenderFrame() {
+void GameTechVulkanRenderer::RenderFrame(float dt) {
 	//TransitionSwapchainForRendering(defaultCmdBuffer);
 
 	FrameContext const& context = vkQuickInstance->GetFrameContext();
@@ -293,17 +319,16 @@ void GameTechVulkanRenderer::RenderFrame() {
 	//UpdateBufferDescriptorOffset(*currentFrame->dataDescriptor, currentFrame->dataBuffer, 1, vk::DescriptorType::eStorageBuffer, currentFrame->objectStateOffset, objectSize);
 
 	{//Render the shadow map for the frame	
-		cmdBuffer.beginRendering(
-			DynamicRenderBuilder()
-			.WithDepthAttachment({
-				.imageView = *shadowMap->GetDefaultView(),
-				.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
-				.loadOp = vk::AttachmentLoadOp::eClear,
-				.clearValue = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f)
-				})
-			.WithRenderArea(shadowScissor)
-			.Build()
-		);
+		
+		VKQuick::DynamicRenderBuilder(context.cmdBuffer)
+		.WithDepthAttachment({
+			//.imageView = *shadowMap,
+			.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
+			.loadOp = vk::AttachmentLoadOp::eClear,
+			.clearValue = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f)
+			})
+		.WithRenderArea(shadowScissor)
+		.BeginRendering();
 
 		cmdBuffer.setViewport(0, 1, &shadowViewport);
 		cmdBuffer.setScissor( 0, 1, &shadowScissor);
@@ -412,7 +437,7 @@ void GameTechVulkanRenderer::UpdateDebugData() {
 	}
 }
 
-void GameTechVulkanRenderer::RenderSceneObjects(VulkanPipeline& pipe, vk::CommandBuffer cmds) {
+void GameTechVulkanRenderer::RenderSceneObjects(VKQuick::Pipeline& pipe, vk::CommandBuffer cmds) {
 	int index = 0;
 	if (activeObjects.empty()) {
 		return;
@@ -433,8 +458,8 @@ void GameTechVulkanRenderer::RenderSceneObjects(VulkanPipeline& pipe, vk::Comman
 		if (activeMesh != objectMesh) {
 			cmds.pushConstants(*pipe.layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(uint32_t), (void*)&startingIndex);
 
-			activeMesh->BindToCommandBuffer(cmds);
-			activeMesh->DrawAllLayers(cmds, count);
+			activeMesh->GetMesh()->BindToCommandBuffer(cmds);
+			activeMesh->GetMesh()->Draw(cmds, count);
 
 			//SubmitDrawCall(*activeMesh, cmds, count);
 			activeMesh = objectMesh;
@@ -446,8 +471,8 @@ void GameTechVulkanRenderer::RenderSceneObjects(VulkanPipeline& pipe, vk::Comman
 			cmds.pushConstants(*pipe.layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(uint32_t), (void*)&startingIndex);
 			//SubmitDrawCall(*objectMesh, cmds, count);
 
-			activeMesh->BindToCommandBuffer(cmds);
-			activeMesh->DrawAllLayers(cmds, count);
+			activeMesh->GetMesh()->BindToCommandBuffer(cmds);
+			activeMesh->GetMesh()->Draw(cmds, count);
 		}
 		else {
 			count += increment;
@@ -460,8 +485,8 @@ void GameTechVulkanRenderer::RenderSkybox(vk::CommandBuffer cmds) {
 	cmds.bindPipeline(vk::PipelineBindPoint::eGraphics, *skyboxPipeline.pipeline);
 	cmds.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *skyboxPipeline.layout, 0, 1, &*currentFrame->dataDescriptor, 0, nullptr);
 	//SubmitDrawCall(*quadMesh, cmds);
-	quadMesh->BindToCommandBuffer(cmds);
-	quadMesh->DrawAllLayers(cmds);
+	quadMesh->GetMesh()->BindToCommandBuffer(cmds);
+	quadMesh->GetMesh()->Draw(cmds);
 }
 
 void GameTechVulkanRenderer::RenderDebugLines(vk::CommandBuffer cmds) {
@@ -470,8 +495,8 @@ void GameTechVulkanRenderer::RenderDebugLines(vk::CommandBuffer cmds) {
 	cmds.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *debugLinePipeline.layout, 1, 1, &*objectTextxureDescriptor, 0, nullptr);
 
 	vk::Buffer attributeBuffers[2] = {
-		currentFrame->dataBuffer.buffer,
-		currentFrame->dataBuffer.buffer
+		currentFrame->dataBuffer.GetHandle(),
+		currentFrame->dataBuffer.GetHandle()
 	};
 
 	vk::DeviceSize attributeOffsets[2] = {
@@ -492,9 +517,9 @@ void GameTechVulkanRenderer::RenderDebugText(vk::CommandBuffer cmds) {
 	cmds.pushConstants(*debugTextPipeline.layout, vk::ShaderStageFlagBits::eFragment, 0, sizeof(uint32_t), (void*)&texID);
 
 	vk::Buffer attributeBuffers[3] = {
-		currentFrame->dataBuffer.buffer,
-		currentFrame->dataBuffer.buffer,
-		currentFrame->dataBuffer.buffer
+		currentFrame->dataBuffer.GetHandle(),
+		currentFrame->dataBuffer.GetHandle(),
+		currentFrame->dataBuffer.GetHandle()
 	};
 
 	vk::DeviceSize attributeOffsets[3] = {
@@ -507,8 +532,8 @@ void GameTechVulkanRenderer::RenderDebugText(vk::CommandBuffer cmds) {
 	cmds.draw((uint32_t)currentFrame->textVertCount, 1, 0, 0);
 }
 
-Mesh* GameTechVulkanRenderer::LoadMesh(const string& name) {
-	VulkanMesh* newMesh = new VulkanMesh(name);
+NCL::Rendering::Mesh* GameTechVulkanRenderer::LoadMesh(const std::string& name) {
+	VulkanMesh* newMesh = new VulkanMesh();
 	newMesh->SetPrimitiveType(NCL::GeometryPrimitive::Triangles);
 	newMesh->SetDebugName(name);
 	//newMesh->UploadToGPU(this);
@@ -531,66 +556,73 @@ UniqueVulkanMesh GameTechVulkanRenderer::GenerateQuad() {
 	return UniqueVulkanMesh(quadMesh);
 }
 
-Texture* GameTechVulkanRenderer::LoadTexture(const string& name) {
-	FrameContext const& context = vkQuickInstance->GetFrameContext();
+NCL::Rendering::Texture* GameTechVulkanRenderer::LoadTexture(const std::string& name) {
+	//FrameContext const& context = vkQuickInstance->GetFrameContext();
 
-	UniqueVulkanTexture tex = LoadTextureInternal(name);
+	//UniqueVulkanTexture tex = LoadTextureInternal(name);
 
-	tex->SetAssetID(loadedTextures.size());
+	//tex->SetAssetID(loadedTextures.size());
 
-	//Write the texture to our big descriptor set
-	WriteCombinedImageDescriptor(context.device, *objectTextxureDescriptor, 0, (int)loadedTextures.size(), tex->GetDefaultView(), *defaultSampler);
+	////Write the texture to our big descriptor set
+	//WriteCombinedImageDescriptor(context.device, *objectTextxureDescriptor, 0, (int)loadedTextures.size(), tex->GetTex().GetDefaultView(), *defaultSampler);
 
-	loadedTextures.emplace_back(tex);
-	return (Texture*)tex.get();
+	//loadedTextures.emplace_back(tex);
+	//return (Texture*)tex.get();
+
+	return nullptr;
 }
 
-UniqueVulkanTexture GameTechVulkanRenderer::LoadTextureInternal(const string& filename) {
-	FrameContext const& context = vkQuickInstance->GetFrameContext();
-	vk::UniqueCommandBuffer cmdBuffer = CmdBufferCreateBegin(context.device, context.commandPools[CommandType::Graphics], "VulkanTexture upload");
+UniqueVulkanTexture GameTechVulkanRenderer::LoadTextureInternal(const std::string& filename) {
+	//FrameContext const& context = vkQuickInstance->GetFrameContext();
+	//vk::UniqueCommandBuffer cmdBuffer = CmdBufferCreateBegin(context.device, context.commandPools[CommandType::Graphics], "VulkanTexture upload");
 
-	UniqueVulkanTexture tex = TextureBuilder(context.device, *memoryManager)
-		.WithCommandBuffer(*cmdBuffer)
-		.BuildFromFile(filename);
+	//VKQuick::UniqueTexture tex = vkQuickInstance->TextureBuilder()
+	//	.WithCommandBuffer(*cmdBuffer)
+	//	.BuildFromFile(filename);
 
-	Vulkan::CmdBufferSubmit(
-		{
-			.buffer = *cmdBuffer,
-			.queue = context.queues[CommandType::Graphics],
-			.device = context.device,
-			.wait = true
-		}
-	);
+	//VKQuick::CmdBufferSubmit(
+	//	{
+	//		.buffer = *cmdBuffer,
+	//		.queue = context.queues[CommandType::Graphics],
+	//		.device = context.device,
+	//		.wait = true
+	//	}
+	//);
 
-	return tex;
+	//return std::make_unique<VulkanTexture>(tex.release());
+
+	return UniqueVulkanTexture();
+
 }
 
-UniqueVulkanTexture GameTechVulkanRenderer::LoadCubemap(
+VKQuick::UniqueTexture GameTechVulkanRenderer::LoadCubemap(
 	const std::string& negativeXFile, const std::string& positiveXFile,
 	const std::string& negativeYFile, const std::string& positiveYFile,
 	const std::string& negativeZFile, const std::string& positiveZFile,
 	const std::string& debugName) {
 
-	FrameContext const& context = vkQuickInstance->GetFrameContext();
-	vk::UniqueCommandBuffer cmdBuffer = CmdBufferCreateBegin(context.device, context.commandPools[CommandType::Graphics], "VulkanTexture upload");
+	//FrameContext const& context = vkQuickInstance->GetFrameContext();
+	//vk::UniqueCommandBuffer cmdBuffer = CmdBufferCreateBegin(context.device, context.commandPools[CommandType::Graphics], "VulkanTexture upload");
 
-	UniqueVulkanTexture tex = TextureBuilder(context.device, *memoryManager)
-		.WithCommandBuffer(*cmdBuffer)
-		.BuildCubemapFromFile(negativeXFile, positiveXFile,
-			negativeYFile, positiveYFile,
-			negativeZFile, positiveZFile,
-			debugName
-		);
+	//VKQuick::UniqueTexture tex = vkQuickInstance->TextureBuilder()
+	//	.WithCommandBuffer(*cmdBuffer)
+	//	.BuildCubemapFromFile(negativeXFile, positiveXFile,
+	//		negativeYFile, positiveYFile,
+	//		negativeZFile, positiveZFile,
+	//		debugName
+	//	);
 
-	Vulkan::CmdBufferSubmit(
-		{
-			.buffer = *cmdBuffer,
-			.queue	= context.queues[CommandType::Graphics],
-			.device = context.device,
-			.wait	= true
-		}
-	);
+	//VKQuick::CmdBufferSubmit(
+	//	{
+	//		.buffer = *cmdBuffer,
+	//		.queue	= context.queues[CommandType::Graphics],
+	//		.device = context.device,
+	//		.wait	= true
+	//	}
+	//);
 
+	//return tex;
+	VKQuick::UniqueTexture tex;
 	return tex;
 }
 
@@ -600,9 +632,11 @@ void GameTechVulkanRenderer::UploadMeshWait(VulkanMesh& m, vk::BufferUsageFlags 
 
 	vk::UniqueCommandBuffer cmdBuffer = CmdBufferCreateBegin(context.device, context.commandPools[CommandType::Graphics], "VulkanMesh upload");
 
-	m.UploadToGPU(*cmdBuffer, memoryManager, flags);
+	m.InitialiseGPUState(context.device, vkQuickInstance->GetMemoryManager(), flags);
 
-	Vulkan::CmdBufferSubmit(
+	m.UploadAttributes(*cmdBuffer);
+
+	VKQuick::CmdBufferSubmit(
 		{
 			.buffer = *cmdBuffer,
 			.queue  = context.queues[CommandType::Graphics],

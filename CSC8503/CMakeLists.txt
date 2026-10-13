@@ -131,18 +131,19 @@ target_precompile_headers(${PROJECT_NAME} PRIVATE
  
 if(USE_VULKAN)
 target_precompile_headers(${PROJECT_NAME} PRIVATE
-    "../VulkanRendering/SmartTypes.h"
+    <vulkan/vulkan.hpp>
 
-    "../VulkanRendering/VulkanRenderer.h"
-    "../VulkanRendering/VulkanTexture.h"
-    "../VulkanRendering/VulkanMesh.h"
-    "../VulkanRendering/VulkanPipelineBuilder.h"
-    "../VulkanRendering/VulkanDynamicRenderBuilder.h"
+    "../VKQuick/Instance.h"
+    "../VKQuick/Texture.h"
 
-    "../VulkanRendering/VulkanDescriptorSetLayoutBuilder.h"
-    "../VulkanRendering/VulkanRenderPassBuilder.h"
+    "../VKQuick/Mesh.h"
+    "../VKQuick/PipelineBuilder.h"
+    "../VKQuick/DynamicRenderBuilder.h"
 
-    "../VulkanRendering/VulkanComputePipelineBuilder.h"
+    "../VKQuick/DescriptorSetLayoutBuilder.h"
+    "../VKQuick/RenderPassBuilder.h"
+
+    "../VKQuick/ComputePipelineBuilder.h"
 )
 endif()
 
@@ -155,6 +156,8 @@ target_link_libraries(${PROJECT_NAME} LINK_PUBLIC CSC8503CoreClasses)
 if(USE_VULKAN)
     include_directories("../VulkanRendering/")
     target_link_libraries(${PROJECT_NAME} LINK_PUBLIC VulkanRendering)
+
+    target_link_libraries(${PROJECT_NAME} LINK_PUBLIC VKQuick)
 
    # add_custom_target(
    #     SHADER_FILES

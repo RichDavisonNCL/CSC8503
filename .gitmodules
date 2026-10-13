@@ -10,3 +10,9 @@
 [submodule "OpenGLRendering"]
 	path = OpenGLRendering
 	url = https://github.com/RichDavisonNCL/OpenGLRendering
+[submodule "VKQuick"]
+	path = VKQuick
+	url = https://github.com/RichDavisonNCL/VKQuick
+[submodule "GLTFLoader"]
+	path = GLTFLoader
+	url = https://github.com/RichDavisonNCL/GLTFLoader

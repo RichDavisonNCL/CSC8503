@@ -1,8 +1,12 @@
 #pragma once
 #ifdef USE_VULKAN
 #include "GameTechRendererInterface.h"
-#include "VulkanRenderer.h"
+
+#include "../VKQuick/Instance.h"
+
 #include "VulkanMesh.h"
+#include "VulkanTexture.h"
+
 #include "GameWorld.h"
 
 namespace NCL::CSC8503 {
@@ -15,8 +19,10 @@ namespace NCL::CSC8503 {
 		GameTechVulkanRenderer(GameWorld& world);
 		~GameTechVulkanRenderer();
 
-		Mesh*		LoadMesh(const string& name)			override;
-		Texture*	LoadTexture(const std::string& name)	override;
+		NCL::Rendering::Mesh*		LoadMesh(const std::string& name)		override;
+		NCL::Rendering::Texture*	LoadTexture(const std::string& name)	override;
+
+		void RenderFrame(float dt) override;
 
 	protected:
 		struct GlobalData {
@@ -42,21 +48,21 @@ namespace NCL::CSC8503 {
 			int index;
 		};
 	
-		class VulkanGameTechTexture : public NCL::Rendering::Vulkan::VulkanTexture
-		{
-			friend class GameTechVulkanRenderer;
-		public:
-			VulkanGameTechTexture(const std::string& filename) : VulkanTexture(filename) {
-				index = 0;
-			}
-		protected:
-			int index;
-		};
+		//class VulkanGameTechTexture : public NCL::Rendering::Vulkan::VulkanTexture
+		//{
+		//	friend class GameTechVulkanRenderer;
+		//public:
+		//	VulkanGameTechTexture(const std::string& filename) : VulkanTexture(filename) {
+		//		index = 0;
+		//	}
+		//protected:
+		//	int index;
+		//};
 
 		struct FrameData {
 			vk::UniqueFence fence;
 
-			VulkanBuffer	dataBuffer;
+			VKQuick::Buffer	dataBuffer;
 			char*			dataStart;	//Start of our buffer
 			char*			data;		//We're bumping this along as we write data
 
@@ -101,20 +107,20 @@ namespace NCL::CSC8503 {
 		FrameData* allFrames;
 		FrameData* currentFrame;
 
-		void RenderFrame();
+
 
 		//void RenderFrame(float dt)	override;
 		//	Update(dt);
 		//	Render();
 		//}
 
-		UniqueVulkanTexture LoadCubemap(
+		VKQuick::UniqueTexture LoadCubemap(
 			const std::string& negativeXFile, const std::string& positiveXFile,
 			const std::string& negativeYFile, const std::string& positiveYFile,
 			const std::string& negativeZFile, const std::string& positiveZFile,
 			const std::string& debugName = "CubeMap");
 
-		UniqueVulkanTexture LoadTextureInternal(const string& filename);
+		UniqueVulkanTexture LoadTextureInternal(const std::string& filename);
 
 
 		void BuildScenePipelines(VulkanMesh* m);
@@ -123,7 +129,7 @@ namespace NCL::CSC8503 {
 		void UpdateObjectList();
 		void UpdateDebugData();
 		 
-		void RenderSceneObjects(VulkanPipeline& pipe, vk::CommandBuffer cmds);
+		void RenderSceneObjects(VKQuick::Pipeline& pipe, vk::CommandBuffer cmds);
 		void RenderSkybox(vk::CommandBuffer cmds);
 		void RenderDebugLines(vk::CommandBuffer cmds);
 		void RenderDebugText(vk::CommandBuffer cmds);
@@ -136,21 +142,21 @@ namespace NCL::CSC8503 {
 		std::vector<const RenderObject*> activeObjects;
 		int currentFrameIndex;
 
-		VulkanPipeline	skyboxPipeline;
-		VulkanPipeline	shadowPipeline;
-		VulkanPipeline	scenePipeline;
-		VulkanPipeline	debugLinePipeline;
-		VulkanPipeline	debugTextPipeline;
+		VKQuick::Pipeline	skyboxPipeline;
+		VKQuick::Pipeline	shadowPipeline;
+		VKQuick::Pipeline	scenePipeline;
+		VKQuick::Pipeline	debugLinePipeline;
+		VKQuick::Pipeline	debugTextPipeline;
 
 		UniqueVulkanMesh	quadMesh;
-		UniqueVulkanTexture	cubeTex;
 
-		UniqueVulkanTexture shadowMap;
-		UniqueVulkanTexture defaultTexture;
+		VKQuick::UniqueTexture	cubeTex;
+		VKQuick::UniqueTexture	shadowMap;
 
-		VulkanRenderer*		vkQuickInstance;
-		VulkanMemoryManager* memoryManager;
-	
+		UniqueVulkanTexture	defaultTexture;
+
+		VKQuick::Instance*		vkQuickInstance;
+
 		vk::Viewport	shadowViewport;
 		vk::Rect2D		shadowScissor;
 

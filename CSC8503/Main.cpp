@@ -21,10 +21,10 @@
 #include "GameTechOpenGLRenderer.h"
 #include "KeyboardMouseController.h"
 
-#ifdef USEOGL
+#ifdef USE_OPENGL
 #include "GameTechOpenGLRenderer.h"
 #endif
-#ifdef USEVULKAN
+#ifdef USE_VULKAN
 #include "GameTechVulkanRenderer.h"
 #endif
 
