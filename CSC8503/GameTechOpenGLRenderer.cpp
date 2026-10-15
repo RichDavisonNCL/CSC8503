@@ -14,6 +14,8 @@ using namespace CSC8503;
 
 #define SHADOWSIZE 4096
 
+const int _SUN_RADIUS = 1000.0f;
+
 Matrix4 biasMatrix = Matrix::Translation(Vector3(0.5f, 0.5f, 0.5f)) * Matrix::Scale(Vector3(0.5f, 0.5f, 0.5f));
 
 GameTechOpenGLRenderer::GameTechOpenGLRenderer(GameWorld& world) : OGLRenderer(*Window::GetWindow()), gameWorld(world)	{
@@ -42,11 +44,6 @@ GameTechOpenGLRenderer::GameTechOpenGLRenderer(GameWorld& world) : OGLRenderer(*
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	glClearColor(1, 1, 1, 1);
-
-	//Set up the light properties
-	lightColour = Vector4(0.8f, 0.8f, 0.5f, 1.0f);
-	lightRadius = 1000.0f;
-	lightPosition = Vector3(-200.0f, 60.0f, -200.0f);
 
 	//Skybox!
 	skyboxShader = new OGLShader("skybox.vert", "skybox.frag");
@@ -173,7 +170,7 @@ void GameTechOpenGLRenderer::ShadowMapPass() {
 	BindShader(*shadowShader);
 	int mvpLocation = glGetUniformLocation(shadowShader->GetProgramID(), "mvpMatrix");
 
-	Matrix4 shadowViewMatrix = Matrix::View(lightPosition, Vector3(0, 0, 0), Vector3(0,1,0));
+	Matrix4 shadowViewMatrix = Matrix::View(gameWorld.GetSunPosition(), Vector3(0, 0, 0), Vector3(0, 1, 0));
 	Matrix4 shadowProjMatrix = Matrix::Perspective(100.0f, 500.0f, 1, 45.0f);
 
 	Matrix4 mvMatrix = shadowProjMatrix * shadowViewMatrix;
@@ -262,9 +259,12 @@ void GameTechOpenGLRenderer::RenderTransparentPass() {
 	glUniformMatrix4fv(projLocation, 1, false, (float*)&projMatrix);
 	glUniformMatrix4fv(viewLocation, 1, false, (float*)&viewMatrix);
 
-	glUniform3fv(lightPosLocation, 1, (float*)&lightPosition);
-	glUniform4fv(lightColourLocation, 1, (float*)&lightColour);
-	glUniform1f(lightRadiusLocation, lightRadius);
+	Vector3 sunPos = gameWorld.GetSunPosition();
+	Vector3 sunCol = gameWorld.GetSunColour();
+
+	glUniform3fv(lightPosLocation, 1, (float*)&sunPos);
+	glUniform4fv(lightColourLocation, 1, (float*)&sunCol);
+	glUniform1f(lightRadiusLocation, _SUN_RADIUS);
 
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -341,9 +341,12 @@ void GameTechOpenGLRenderer::RenderOpaquePass() {
 	glUniformMatrix4fv(projLocation, 1, false, (float*)&projMatrix);
 	glUniformMatrix4fv(viewLocation, 1, false, (float*)&viewMatrix);
 
-	glUniform3fv(lightPosLocation	, 1, (float*)&lightPosition);
-	glUniform4fv(lightColourLocation, 1, (float*)&lightColour);
-	glUniform1f(lightRadiusLocation , lightRadius);
+	Vector3 sunPos = gameWorld.GetSunPosition();
+	Vector3 sunCol = gameWorld.GetSunColour();
+
+	glUniform3fv(lightPosLocation	, 1, (float*)&sunPos);
+	glUniform4fv(lightColourLocation, 1, (float*)&sunCol);
+	glUniform1f(lightRadiusLocation , _SUN_RADIUS);
 
 
 	for (const auto&i : activeOpaqueObjects) {

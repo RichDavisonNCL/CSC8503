@@ -48,17 +48,6 @@ namespace NCL::CSC8503 {
 			int index;
 		};
 	
-		//class VulkanGameTechTexture : public NCL::Rendering::Vulkan::VulkanTexture
-		//{
-		//	friend class GameTechVulkanRenderer;
-		//public:
-		//	VulkanGameTechTexture(const std::string& filename) : VulkanTexture(filename) {
-		//		index = 0;
-		//	}
-		//protected:
-		//	int index;
-		//};
-
 		struct FrameData {
 			vk::UniqueFence fence;
 
@@ -66,10 +55,10 @@ namespace NCL::CSC8503 {
 			char*			dataStart;	//Start of our buffer
 			char*			data;		//We're bumping this along as we write data
 
-			int globalDataOffset	= 0;	//Where does the global data start in the buffer?
-			int objectStateOffset	= 0;	//Where does the object states start?
-			int debugLinesOffset	= 0;	//Where do the debug lines start?
-			int debugTextOffset		= 0;	//Where do the debug text verts start?
+			vk::DeviceSize globalDataOffset		= 0;	//Where does the global data start in the buffer?
+			vk::DeviceSize objectStateOffset	= 0;	//Where does the object states start?
+			vk::DeviceSize debugLinesOffset		= 0;	//Where do the debug lines start?
+			vk::DeviceSize debugTextOffset		= 0;	//Where do the debug text verts start?
 
 			size_t			objectCount;
 			size_t			debugVertSize;
@@ -97,8 +86,6 @@ namespace NCL::CSC8503 {
 
 			void AlignData(size_t alignment) {
 				char* oldData = data;
-				//data = (char*)(((uintptr_t)data + alignment - 1) & ~(uintptr_t)alignment);
-
 				data = (char*)((((uintptr_t)data + alignment - 1) / (uintptr_t)alignment) * (uintptr_t)alignment);
 				bytesWritten += data - oldData;
 			}
@@ -107,20 +94,13 @@ namespace NCL::CSC8503 {
 		FrameData* allFrames;
 		FrameData* currentFrame;
 
-
-
-		//void RenderFrame(float dt)	override;
-		//	Update(dt);
-		//	Render();
-		//}
-
 		VKQuick::UniqueTexture LoadCubemap(
 			const std::string& negativeXFile, const std::string& positiveXFile,
 			const std::string& negativeYFile, const std::string& positiveYFile,
 			const std::string& negativeZFile, const std::string& positiveZFile,
 			const std::string& debugName = "CubeMap");
 
-		UniqueVulkanTexture LoadTextureInternal(const std::string& filename);
+		VKQuick::UniqueTexture LoadTextureInternal(const std::string& filename);
 
 
 		void BuildScenePipelines(VulkanMesh* m);
@@ -142,6 +122,8 @@ namespace NCL::CSC8503 {
 		std::vector<const RenderObject*> activeObjects;
 		int currentFrameIndex;
 
+		VKQuick::Instance*		vkQuick;
+
 		VKQuick::Pipeline	skyboxPipeline;
 		VKQuick::Pipeline	shadowPipeline;
 		VKQuick::Pipeline	scenePipeline;
@@ -153,16 +135,12 @@ namespace NCL::CSC8503 {
 		VKQuick::UniqueTexture	cubeTex;
 		VKQuick::UniqueTexture	shadowMap;
 
-		UniqueVulkanTexture	defaultTexture;
-
-		VKQuick::Instance*		vkQuickInstance;
-
 		vk::Viewport	shadowViewport;
 		vk::Rect2D		shadowScissor;
 
 		vk::UniqueDescriptorSetLayout objectTextxureLayout;
 
-		vk::UniqueDescriptorSet objectTextxureDescriptor;
+		vk::UniqueDescriptorSet objectTextureDescriptor;
 
 		vk::UniqueSampler	defaultSampler;
 		vk::UniqueSampler	textSampler;

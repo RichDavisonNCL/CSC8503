@@ -18,20 +18,8 @@ namespace NCL::CSC8503 {
 		GameTechRendererInterface() = default;
 		virtual ~GameTechRendererInterface() = default;
 
-		void SetLightColour(Vector4 l) {
-			lightColour = l;
-		}
-		void SetLightRadius(float f) {
-			lightRadius = f;
-		}
-		void SetLightPosition(Vector3 p) {
-			lightPosition = p;
-		}
-
 	protected:
-		Vector4		lightColour;
-		float		lightRadius = 100.0f;
-		Vector3		lightPosition;
+
 	};
 }
 
