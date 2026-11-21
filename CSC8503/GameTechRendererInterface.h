@@ -4,6 +4,7 @@ namespace NCL::Rendering {
 	class Mesh;
 	class Texture;
 	class Shader;
+	struct GLTFScene;
 }
 
 namespace NCL::CSC8503 {
@@ -12,6 +13,8 @@ namespace NCL::CSC8503 {
 	public:
 		virtual NCL::Rendering::Mesh* LoadMesh(const std::string& name)			= 0;
 		virtual NCL::Rendering::Texture* LoadTexture(const std::string& name)	= 0;
+
+		virtual bool LoadGLTF(const std::string& filename, NCL::Rendering::GLTFScene& intoScene) = 0;
 
 		virtual void RenderFrame(float dt) = 0;
 

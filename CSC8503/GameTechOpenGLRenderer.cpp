@@ -8,6 +8,8 @@
 
 #include "Debug.h"
 
+#include "../GLTFLoader/GLTFLoader.h"
+
 using namespace NCL;
 using namespace Rendering;
 using namespace CSC8503;
@@ -45,6 +47,29 @@ GameTechOpenGLRenderer::GameTechOpenGLRenderer(GameWorld& world) : OGLRenderer(*
 
 	glClearColor(1, 1, 1, 1);
 
+	GLTFLoader::SetTextureConstructionFunction(
+		[&](std::string& input) ->  SharedTexture {
+			return std::shared_ptr<Texture>(OGLTexture::TextureFromFile(input));
+		}
+	);
+
+	GLTFLoader::SetMeshConstructionFunction(
+		[&]()-> std::shared_ptr<Mesh> {return std::shared_ptr<Mesh>(new OGLMesh()); }
+	);
+
+	//GLTFLoader::SetTextureConstructionFunction(
+	//	[&](std::string& input) ->  SharedTexture {
+	//		VulkanTexture* texture = new VulkanTexture(*(LoadTextureInternal(input).release()));
+	//		return std::shared_ptr<Texture>(texture);
+	//	}
+	//);
+
+	//GLTFLoader::SetMeshConstructionFunction(
+	//	[&]()-> std::shared_ptr<Mesh> {return std::shared_ptr<Mesh>(new VulkanMesh()); }
+	//);
+
+
+
 	//Skybox!
 	skyboxShader = new OGLShader("skybox.vert", "skybox.frag");
 	skyboxMesh = new OGLMesh();
@@ -69,6 +94,18 @@ GameTechOpenGLRenderer::GameTechOpenGLRenderer(GameWorld& world) : OGLRenderer(*
 GameTechOpenGLRenderer::~GameTechOpenGLRenderer()	{
 	glDeleteTextures(1, &shadowTex);
 	glDeleteFramebuffers(1, &shadowFBO);
+}
+
+bool GameTechOpenGLRenderer::LoadGLTF(const std::string& filename, NCL::Rendering::GLTFScene& intoScene) {
+	if (!GLTFLoader::Load(filename, intoScene))  {
+		return false;
+	}	
+
+	for (const auto& m : intoScene.meshes) {
+		m->UploadToGPU(this);
+	}
+
+	return true;
 }
 
 void GameTechOpenGLRenderer::LoadSkybox() {

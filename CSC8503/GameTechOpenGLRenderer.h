@@ -21,6 +21,8 @@ namespace NCL {
 			Texture*	LoadTexture(const std::string& name);
 			Shader*		LoadShader(const std::string& vertex, const std::string& fragment);
 
+			bool LoadGLTF(const std::string& filename, NCL::Rendering::GLTFScene& intoScene);
+
 			void RenderFrame(float dt)	override {
 				Update(dt);
 				Render();

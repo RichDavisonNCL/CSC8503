@@ -27,30 +27,30 @@ TutorialGame::TutorialGame(GameWorld& inWorld, GameTechRendererInterface& inRend
 	world.SetSunPosition({ -200.0f, 60.0f, -200.0f });
 	world.SetSunColour({ 0.8f, 0.8f, 0.5f });
 
-	cubeMesh = renderer.LoadMesh("cube.msh");
-	sphereMesh = renderer.LoadMesh("sphere.msh");
-	catMesh = renderer.LoadMesh("ORIGAMI_Chat.msh");
-	kittenMesh = renderer.LoadMesh("Kitten.msh");
+	cubeMesh	= renderer.LoadMesh("cube.msh");
+	sphereMesh	= renderer.LoadMesh("sphere.msh");
+	catMesh		= renderer.LoadMesh("ORIGAMI_Chat.msh");
+	kittenMesh	= renderer.LoadMesh("Kitten.msh");
 
-	enemyMesh = renderer.LoadMesh("Role_T.msh");
-	enemyAnim = new MeshAnimation("Role_T.anm");
+	enemyMesh	= renderer.LoadMesh("Role_T.msh");
+	enemyAnim	=	 new MeshAnimation("Role_T.anm");
 
-	bonusMesh = renderer.LoadMesh("19463_Kitten_Head_v1.msh");
+	bonusMesh	= renderer.LoadMesh("19463_Kitten_Head_v1.msh");
 	capsuleMesh = renderer.LoadMesh("capsule.msh");
 
-	defaultTex = renderer.LoadTexture("Default.png");
-	checkerTex = renderer.LoadTexture("checkerboard.png");
-	glassTex = renderer.LoadTexture("stainedglass.png");
-	enemyTex = renderer.LoadTexture("stainedglass.png");
+	defaultTex	= renderer.LoadTexture("Default.png");
+	checkerTex	= renderer.LoadTexture("checkerboard.png");
+	glassTex	= renderer.LoadTexture("stainedglass.png");
+	enemyTex	= renderer.LoadTexture("stainedglass.png");
 
-	checkerMaterial.type = MaterialType::Opaque;
-	checkerMaterial.diffuseTex = checkerTex;
+	checkerMaterial.type		= MaterialType::Opaque;
+	checkerMaterial.diffuseTex	= checkerTex;
 
-	glassMaterial.type = MaterialType::Transparent;
-	glassMaterial.diffuseTex = glassTex;
+	glassMaterial.type			= MaterialType::Transparent;
+	glassMaterial.diffuseTex	= glassTex;
 
-	enemyMaterial.type = MaterialType::Opaque;
-	enemyMaterial.diffuseTex = glassTex;
+	enemyMaterial.type			= MaterialType::Opaque;
+	enemyMaterial.diffuseTex	= glassTex;
 
 	InitCamera();
 	InitWorld();
