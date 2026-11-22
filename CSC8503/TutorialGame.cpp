@@ -43,6 +43,8 @@ TutorialGame::TutorialGame(GameWorld& inWorld, GameTechRendererInterface& inRend
 	glassTex	= renderer.LoadTexture("stainedglass.png");
 	enemyTex	= renderer.LoadTexture("stainedglass.png");
 
+	renderer.LoadGLTF("car/sportcar.017.gltf", milkTruck);
+
 	checkerMaterial.type		= MaterialType::Opaque;
 	checkerMaterial.diffuseTex	= checkerTex;
 
@@ -102,8 +104,6 @@ void TutorialGame::UpdateGame(float dt) {
 
 	RayCollision closestCollision;
 
-
-
 	if (Window::GetKeyboard()->KeyPressed(NCL::KeyCodes::K) && selectionObject) {
 		Vector3 rayPos;
 		Vector3 rayDir;
@@ -130,13 +130,6 @@ void TutorialGame::UpdateGame(float dt) {
 
 	SelectObject();
 	MoveSelectedObject();
-
-	//Moved to the GameWorld Update itself
-	//world.OperateOnContents(
-	//	[dt](GameObject* o) {
-	//		o->Update(dt);
-	//	}
-	//);
 }
 /*
 This is called after the game + physics have ran, but BEFORE rendering occurs
@@ -400,7 +393,7 @@ GameObject* TutorialGame::AddEnemyToWorld(const Vector3& position) {
 		.SetScale(Vector3(meshSize, meshSize, meshSize))
 		.SetPosition(position);
 
-	character->SetRenderObject(new RenderObject(character->GetTransform(), enemyMesh, notexMaterial));
+	character->SetRenderObject(new RenderObject(character->GetTransform(), &(*milkTruck.meshes[0]), notexMaterial));
 	character->SetPhysicsObject(new PhysicsObject(character->GetTransform(), character->GetBoundingVolume()));
 
 	character->GetPhysicsObject()->SetInverseMass(inverseMass);
@@ -518,10 +511,6 @@ void TutorialGame::ObjectTest() {
 	AddCubeToWorld(position, cubeDims);
 }
 
-
-
-
-
 void TutorialGame::InitCubeGridWorld(int numRows, int numCols, float rowSpacing, float colSpacing, const Vector3& cubeDims) {
 	for (int x = 1; x < numCols+1; ++x) {
 		for (int z = 1; z < numRows+1; ++z) {
@@ -539,9 +528,6 @@ letting you move the camera around.
 
 */
 bool TutorialGame::SelectObject() {
-
-
-
 	if (Window::GetKeyboard()->KeyPressed(NCL::KeyCodes::Q)) {
 		inSelectionMode = !inSelectionMode;
 		if (inSelectionMode) {

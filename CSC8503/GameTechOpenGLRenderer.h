@@ -11,6 +11,8 @@
 namespace NCL {
 	namespace CSC8503 {
 		class RenderObject;
+		class GameTechOpenGLRenderer;
+		using ObjectDrawFunc = std::function<void(GameTechOpenGLRenderer*, const RenderObject*)>;
 
 		class GameTechOpenGLRenderer : public OGLRenderer, public GameTechRendererInterface {
 		public:
@@ -41,9 +43,9 @@ namespace NCL {
 			void BuildObjectList();
 			void SortObjectList();
 			void ShadowMapPass();
-			void RenderTransparentPass();
-			void RenderOpaquePass(); 
 			void SkyboxPass();
+
+			void SceneDrawPass(const std::vector<const RenderObject*>& list, ObjectDrawFunc drawFunc, bool useBlend, bool useCull);
 
 			void LoadSkybox();
 
@@ -53,6 +55,9 @@ namespace NCL {
 			std::vector<const RenderObject*> activeOpaqueObjects;
 			std::vector<const RenderObject*> activeTransparentObjects;
 
+
+			static void OpaqueRenderObject(GameTechOpenGLRenderer* renderer, const RenderObject* o);
+			static void TransparentRenderObject(GameTechOpenGLRenderer* renderer, const RenderObject* o);
 
 			OGLShader*  debugShader;
 			OGLShader*  skyboxShader;

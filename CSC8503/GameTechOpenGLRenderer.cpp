@@ -57,19 +57,6 @@ GameTechOpenGLRenderer::GameTechOpenGLRenderer(GameWorld& world) : OGLRenderer(*
 		[&]()-> std::shared_ptr<Mesh> {return std::shared_ptr<Mesh>(new OGLMesh()); }
 	);
 
-	//GLTFLoader::SetTextureConstructionFunction(
-	//	[&](std::string& input) ->  SharedTexture {
-	//		VulkanTexture* texture = new VulkanTexture(*(LoadTextureInternal(input).release()));
-	//		return std::shared_ptr<Texture>(texture);
-	//	}
-	//);
-
-	//GLTFLoader::SetMeshConstructionFunction(
-	//	[&]()-> std::shared_ptr<Mesh> {return std::shared_ptr<Mesh>(new VulkanMesh()); }
-	//);
-
-
-
 	//Skybox!
 	skyboxShader = new OGLShader("skybox.vert", "skybox.frag");
 	skyboxMesh = new OGLMesh();
@@ -156,8 +143,13 @@ void GameTechOpenGLRenderer::RenderFrame() {
 	ShadowMapPass();
 	SkyboxPass();
 
-	RenderOpaquePass();
-	RenderTransparentPass();
+
+
+
+
+
+	SceneDrawPass(activeOpaqueObjects, &OpaqueRenderObject, false, true);
+	SceneDrawPass(activeTransparentObjects, TransparentRenderObject, true, true);
 
 	glDisable(GL_CULL_FACE); //Todo - text indices are going the wrong way...
 	glDisable(GL_BLEND);
@@ -262,7 +254,29 @@ void GameTechOpenGLRenderer::SkyboxPass() {
 	glEnable(GL_DEPTH_TEST);
 }
 
-void GameTechOpenGLRenderer::RenderTransparentPass() {
+void GameTechOpenGLRenderer::OpaqueRenderObject(GameTechOpenGLRenderer* renderer, const RenderObject* o) {
+	renderer->BindMesh(*(OGLMesh*)(*o).GetMesh());
+	int layerCount = (*o).GetMesh()->GetSubMeshCount();
+	for (int i = 0; i < layerCount; ++i) {
+		renderer->DrawBoundMesh(i);
+	}
+}
+
+void GameTechOpenGLRenderer::TransparentRenderObject(GameTechOpenGLRenderer* renderer, const RenderObject* o) {
+	renderer->BindMesh(*(OGLMesh*)(*o).GetMesh());
+	int layerCount = (*o).GetMesh()->GetSubMeshCount();
+
+	glCullFace(GL_FRONT);
+	for (int i = 0; i < layerCount; ++i) {
+		renderer->DrawBoundMesh(i);
+	}
+	glCullFace(GL_BACK);
+	for (int i = 0; i < layerCount; ++i) {
+		renderer->DrawBoundMesh(i);
+	}
+}
+
+void GameTechOpenGLRenderer::SceneDrawPass(const std::vector<const RenderObject*>& list, ObjectDrawFunc drawFunc, bool useBlend, bool useCull) {
 	float screenAspect = (float)windowSize.x / (float)windowSize.y;
 	Matrix4 viewMatrix = gameWorld.GetMainCamera().BuildViewMatrix();
 	Matrix4 projMatrix = gameWorld.GetMainCamera().BuildProjectionMatrix(screenAspect);
@@ -303,12 +317,23 @@ void GameTechOpenGLRenderer::RenderTransparentPass() {
 	glUniform4fv(lightColourLocation, 1, (float*)&sunCol);
 	glUniform1f(lightRadiusLocation, _SUN_RADIUS);
 
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glEnable(GL_CULL_FACE);
-	glCullFace(GL_FRONT);
+	if (useBlend) {
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	}
+	else {
+		glDisable(GL_BLEND);
+	}
 
-	for (const auto& i : activeTransparentObjects) {
+	if (useCull) {
+		glEnable(GL_CULL_FACE);
+		glCullFace(GL_BACK);
+	}
+	else {
+		glDisable(GL_CULL_FACE);
+	}
+
+	for (const auto& i : list) {
 		GameTechMaterial mat = i->GetMaterial();
 
 		if (mat.diffuseTex) {
@@ -328,6 +353,8 @@ void GameTechOpenGLRenderer::RenderTransparentPass() {
 
 		glUniform1i(hasTexLocation, mat.diffuseTex ? 1 : 0);
 
+		drawFunc(this, i);
+
 		BindMesh(*(OGLMesh*)(*i).GetMesh());
 		int layerCount = (*i).GetMesh()->GetSubMeshCount();
 
@@ -342,76 +369,6 @@ void GameTechOpenGLRenderer::RenderTransparentPass() {
 	}
 	glDisable(GL_CULL_FACE);
 	glDisable(GL_BLEND);
-}
-
-void GameTechOpenGLRenderer::RenderOpaquePass() {
-	float screenAspect = (float)windowSize.x / (float)windowSize.y;
-	Matrix4 viewMatrix = gameWorld.GetMainCamera().BuildViewMatrix();
-	Matrix4 projMatrix = gameWorld.GetMainCamera().BuildProjectionMatrix(screenAspect);
-
-	BindShader(*sceneShader);
-
-	const int program = sceneShader->GetProgramID();
-
-	const int projLocation		= glGetUniformLocation(program, "projMatrix");
-	const int viewLocation		= glGetUniformLocation(program, "viewMatrix");
-	const int shadowLocation	= glGetUniformLocation(program, "shadowMatrix");
-
-	const int lightPosLocation		= glGetUniformLocation(program, "lightPos");
-	const int lightColourLocation	= glGetUniformLocation(program, "lightColour");
-	const int lightRadiusLocation	= glGetUniformLocation(program, "lightRadius");
-	const int shadowTexLocation		= glGetUniformLocation(program, "shadowTex");
-	const int cameraLocation		= glGetUniformLocation(program, "cameraPos");	
-	
-	const int modelLocation		= glGetUniformLocation(program, "modelMatrix");
-	const int colourLocation	= glGetUniformLocation(program, "objectColour");
-	const int hasVColLocation	= glGetUniformLocation(program, "hasVertexColours");
-	const int hasTexLocation	= glGetUniformLocation(program, "hasTexture");
-	//TODO - PUT IN FUNCTION
-	glActiveTexture(GL_TEXTURE0 + 1);
-	glBindTexture(GL_TEXTURE_2D, shadowTex);
-	glUniform1i(shadowTexLocation, 1);
-
-	Vector3 camPos = gameWorld.GetMainCamera().GetPosition();
-	glUniform3fv(cameraLocation, 1, camPos.array);
-
-	glUniformMatrix4fv(projLocation, 1, false, (float*)&projMatrix);
-	glUniformMatrix4fv(viewLocation, 1, false, (float*)&viewMatrix);
-
-	Vector3 sunPos = gameWorld.GetSunPosition();
-	Vector3 sunCol = gameWorld.GetSunColour();
-
-	glUniform3fv(lightPosLocation	, 1, (float*)&sunPos);
-	glUniform4fv(lightColourLocation, 1, (float*)&sunCol);
-	glUniform1f(lightRadiusLocation , _SUN_RADIUS);
-
-
-	for (const auto&i : activeOpaqueObjects) {
-		GameTechMaterial mat = i->GetMaterial();
-
-		if (mat.diffuseTex) {
-			BindTextureToShader(*(OGLTexture*)mat.diffuseTex, "mainTex", 0);
-		}
-
-		Matrix4 modelMatrix = (*i).GetTransform().GetMatrix();
-		glUniformMatrix4fv(modelLocation, 1, false, (float*)&modelMatrix);			
-		
-		Matrix4 fullShadowMat = shadowMatrix * modelMatrix;
-		glUniformMatrix4fv(shadowLocation, 1, false, (float*)&fullShadowMat);
-
-		Vector4 colour = i->GetColour();
-		glUniform4fv(colourLocation, 1, colour.array);
-
-		glUniform1i(hasVColLocation, !(*i).GetMesh()->GetColourData().empty());
-
-		glUniform1i(hasTexLocation, mat.diffuseTex ? 1:0);
-
-		BindMesh(*(OGLMesh*)(*i).GetMesh());
-		int layerCount = (*i).GetMesh()->GetSubMeshCount();
-		for (int i = 0; i < layerCount; ++i) {
-			DrawBoundMesh(i);
-		}
-	}
 }
 
 Mesh* GameTechOpenGLRenderer::LoadMesh(const std::string& name) {

@@ -4,6 +4,7 @@
 #include "StateGameObject.h"
 
 #include "MeshAnimation.h"
+#include "../GLTFLoader/GLTFLoader.h"
 
 #include "GameTechRendererInterface.h"
 
@@ -78,6 +79,8 @@ namespace NCL {
 			Rendering::Mesh* kittenMesh		= nullptr;
 			Rendering::Mesh* enemyMesh		= nullptr;
 			Rendering::Mesh* bonusMesh		= nullptr;
+
+			Rendering::GLTFScene milkTruck;
 
 			GameTechMaterial checkerMaterial;
 			GameTechMaterial glassMaterial;
