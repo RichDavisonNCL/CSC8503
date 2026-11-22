@@ -7,6 +7,7 @@
 #include "./Physics/OrientationConstraint.h"
 
 #include "RenderObject.h"
+#include "GLTFRenderObject.h"
 #include "StateGameObject.h"
 
 using namespace NCL;
@@ -43,7 +44,8 @@ TutorialGame::TutorialGame(GameWorld& inWorld, GameTechRendererInterface& inRend
 	glassTex	= renderer.LoadTexture("stainedglass.png");
 	enemyTex	= renderer.LoadTexture("stainedglass.png");
 
-	renderer.LoadGLTF("car/sportcar.017.gltf", milkTruck);
+	renderer.LoadGLTF("CesiumMilkTruck/CesiumMilkTruck.glTF", milkTruck);
+	renderer.LoadGLTF("car/sportcar.017.gltf", raceCar);
 
 	checkerMaterial.type		= MaterialType::Opaque;
 	checkerMaterial.diffuseTex	= checkerTex;
@@ -357,7 +359,7 @@ GameObject* TutorialGame::AddCubeToWorld(const Vector3& position, Vector3 dimens
 }
 
 GameObject* TutorialGame::AddPlayerToWorld(const Vector3& position) {
-	float meshSize = 1.0f;
+	float meshSize = 2.0f;
 	float inverseMass = 0.5f;
 
 	GameObject* character = new GameObject();
@@ -369,7 +371,8 @@ GameObject* TutorialGame::AddPlayerToWorld(const Vector3& position) {
 		.SetScale(Vector3(meshSize, meshSize, meshSize))
 		.SetPosition(position);
 
-	character->SetRenderObject(new RenderObject(character->GetTransform(), catMesh, notexMaterial));
+	character->SetRenderObject(new GLTFRenderObject(character->GetTransform(), milkTruck));
+
 	character->SetPhysicsObject(new PhysicsObject(character->GetTransform(), character->GetBoundingVolume()));
 
 	character->GetPhysicsObject()->SetInverseMass(inverseMass);
@@ -381,7 +384,7 @@ GameObject* TutorialGame::AddPlayerToWorld(const Vector3& position) {
 }
 
 GameObject* TutorialGame::AddEnemyToWorld(const Vector3& position) {
-	float meshSize = 3.0f;
+	float meshSize = 0.025f;
 	float inverseMass = 0.5f;
 
 	GameObject* character = new GameObject();
@@ -393,7 +396,8 @@ GameObject* TutorialGame::AddEnemyToWorld(const Vector3& position) {
 		.SetScale(Vector3(meshSize, meshSize, meshSize))
 		.SetPosition(position);
 
-	character->SetRenderObject(new RenderObject(character->GetTransform(), &(*milkTruck.meshes[0]), notexMaterial));
+	character->SetRenderObject(new GLTFRenderObject(character->GetTransform(), raceCar));
+
 	character->SetPhysicsObject(new PhysicsObject(character->GetTransform(), character->GetBoundingVolume()));
 
 	character->GetPhysicsObject()->SetInverseMass(inverseMass);

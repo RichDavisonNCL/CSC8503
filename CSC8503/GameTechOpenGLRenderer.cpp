@@ -9,6 +9,7 @@
 #include "Debug.h"
 
 #include "../GLTFLoader/GLTFLoader.h"
+#include "../CSC8503CoreClasses/GLTFRenderObject.h"
 
 using namespace NCL;
 using namespace Rendering;
@@ -143,11 +144,6 @@ void GameTechOpenGLRenderer::RenderFrame() {
 	ShadowMapPass();
 	SkyboxPass();
 
-
-
-
-
-
 	SceneDrawPass(activeOpaqueObjects, &OpaqueRenderObject, false, true);
 	SceneDrawPass(activeTransparentObjects, TransparentRenderObject, true, true);
 
@@ -210,11 +206,8 @@ void GameTechOpenGLRenderer::ShadowMapPass() {
 		Matrix4 modelMatrix = (*i).GetTransform().GetMatrix();
 		Matrix4 mvpMatrix	= mvMatrix * modelMatrix;
 		glUniformMatrix4fv(mvpLocation, 1, false, (float*)&mvpMatrix);
-		BindMesh(*(OGLMesh*)(*i).GetMesh());
-		int layerCount = (*i).GetMesh()->GetSubMeshCount();
-		for (int i = 0; i < layerCount; ++i) {
-			DrawBoundMesh(i);
-		}
+
+		OpaqueRenderObject(this, i);
 	}
 
 	glViewport(0, 0, windowSize.x, windowSize.y);
@@ -255,10 +248,45 @@ void GameTechOpenGLRenderer::SkyboxPass() {
 }
 
 void GameTechOpenGLRenderer::OpaqueRenderObject(GameTechOpenGLRenderer* renderer, const RenderObject* o) {
-	renderer->BindMesh(*(OGLMesh*)(*o).GetMesh());
-	int layerCount = (*o).GetMesh()->GetSubMeshCount();
-	for (int i = 0; i < layerCount; ++i) {
-		renderer->DrawBoundMesh(i);
+	if (const GLTFRenderObject* gltf = dynamic_cast<const GLTFRenderObject*>(o)) {
+		//Oh dear. If you look very carefully, you'll be able to spot where I have hacked
+		//in support for rendering GLTF files.
+		GLTFScene* s = gltf->GetScene();
+
+		for (auto& node : s->sceneNodes) {
+			if (node.meshID >= 0) {
+				OGLMesh* m = (OGLMesh*)s->meshes[node.meshID].get();
+				//Absolutely fantastic...
+				Matrix4 modelMat = o->GetTransform().GetMatrix() * node.worldMatrix;
+
+				renderer->SendUniform("modelMatrix", modelMat);
+
+				renderer->BindMesh(*m);
+				int layerCount = m->GetSubMeshCount();
+
+				for (int i = 0; i < layerCount; ++i) {
+					auto mat = s->meshMaterials[node.meshID];
+
+					auto matLayer = s->materials[mat.layers[i]];
+
+					if (matLayer.albedo != -1) {
+						OGLTexture* tex = (OGLTexture*)s->textures[matLayer.albedo].get();
+						renderer->BindTextureToShader(*tex, "mainTex", 0);
+					}
+
+					renderer->SendUniform("hasTexture", matLayer.albedo >= 0 ? 1 : 0);
+
+					renderer->DrawBoundMesh(i);
+				}
+			}
+		}
+	}
+	else {
+		renderer->BindMesh(*(OGLMesh*)(*o).GetMesh());
+		int layerCount = (*o).GetMesh()->GetSubMeshCount();
+		for (int i = 0; i < layerCount; ++i) {
+			renderer->DrawBoundMesh(i);
+		}
 	}
 }
 
@@ -349,23 +377,16 @@ void GameTechOpenGLRenderer::SceneDrawPass(const std::vector<const RenderObject*
 		Vector4 colour = i->GetColour();
 		glUniform4fv(colourLocation, 1, colour.array);
 
-		glUniform1i(hasVColLocation, !(*i).GetMesh()->GetColourData().empty());
+		if ((*i).GetMesh()) {
+			glUniform1i(hasVColLocation, !(*i).GetMesh()->GetColourData().empty());
+		}
+		else {
+			glUniform1i(hasVColLocation, 0);
+		}
 
 		glUniform1i(hasTexLocation, mat.diffuseTex ? 1 : 0);
 
 		drawFunc(this, i);
-
-		BindMesh(*(OGLMesh*)(*i).GetMesh());
-		int layerCount = (*i).GetMesh()->GetSubMeshCount();
-
-		glCullFace(GL_FRONT);
-		for (int i = 0; i < layerCount; ++i) {
-			DrawBoundMesh(i);
-		}
-		glCullFace(GL_BACK);
-		for (int i = 0; i < layerCount; ++i) {
-			DrawBoundMesh(i);
-		}
 	}
 	glDisable(GL_CULL_FACE);
 	glDisable(GL_BLEND);

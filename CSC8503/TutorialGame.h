@@ -81,6 +81,8 @@ namespace NCL {
 			Rendering::Mesh* bonusMesh		= nullptr;
 
 			Rendering::GLTFScene milkTruck;
+			Rendering::GLTFScene raceCar;
+
 
 			GameTechMaterial checkerMaterial;
 			GameTechMaterial glassMaterial;
