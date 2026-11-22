@@ -1,0 +1,12 @@
+struct ShaderCamera {
+	mat4 viewMatrix;
+	mat4 projMatrix;
+	vec3 position;
+	float padding;
+};
+
+#ifndef __cplusplus
+layout (set = 0, binding  = 0) uniform  CameraInfo {
+	ShaderCamera camera;
+};
+#endif

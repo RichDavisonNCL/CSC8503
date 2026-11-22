@@ -1,0 +1,155 @@
+
+struct MeshEntry {
+	int positionBufferIndex;
+	int positionBufferOffset;
+
+	int texCoordBufferIndex;
+	int texCoordBufferOffset;
+
+	int colourBufferIndex;
+	int colourBufferOffset;
+
+	int normalBufferIndex;
+	int normalBufferOffset;
+
+	int tangentBufferIndex;
+	int tangentBufferOffset;
+
+	int indexBufferIndex;
+	int indexBufferOffset;
+
+	int subMeshCount;
+	int firstSubMeshIndex;
+
+	int padding1;
+	int padding2;
+};
+
+struct MeshLayerEntry {
+	int firstElement;
+	int elementCount;
+	int base;
+	int materialIndex;
+};
+
+struct MaterialEntry {
+	int albedoIndex;
+	int bumpIndex;
+	int occlusionIndex;
+	int emissionIndex;
+	int metallicIndex;
+
+	vec4 albedoColour;
+
+	vec3	emissionColour;
+	float	metallicFactor;
+
+	float	roughnessFactor;
+	float	alphaCutoff;
+	int		alphaMode;
+	int		doubleSided;
+};
+
+#ifndef __cplusplus
+layout(scalar, buffer_reference, buffer_reference_align = 8)  buffer Vec2Buffer
+{
+    vec2 data[];
+};
+
+layout(scalar, buffer_reference, buffer_reference_align = 16)  buffer Vec3Buffer
+{
+    vec3 data[];
+};
+
+layout(scalar, buffer_reference, buffer_reference_align = 16)  buffer Vec4Buffer
+{
+    vec4 data[];
+};
+
+layout(scalar, buffer_reference, buffer_reference_align = 4)  buffer IntBuffer
+{
+    int data[];
+};
+
+layout(scalar, buffer_reference, buffer_reference_align = 4)  buffer FloatBuffer
+{
+    float data[];
+};
+
+layout(set = BINDLESS_SET, binding = 0, scalar) readonly buffer Vec2Buffers		{ Vec2Buffer vec2Buffers[];		};
+layout(set = BINDLESS_SET, binding = 0, scalar) readonly buffer Vec3Buffers		{ Vec3Buffer vec3Buffers[];		};
+layout(set = BINDLESS_SET, binding = 0, scalar) readonly buffer Vec4Buffers		{ Vec4Buffer vec4Buffers[];		};
+layout(set = BINDLESS_SET, binding = 0, scalar) readonly buffer FloatBuffers	{ FloatBuffer floatBuffers[];	};
+layout(set = BINDLESS_SET, binding = 0, scalar) readonly buffer IntBuffers		{ IntBuffer intBuffers[];		};
+
+layout(set = BINDLESS_SET, binding = 1,scalar) buffer MeshesBuffer { 
+    MeshEntry meshes[]; 
+};
+layout(set = BINDLESS_SET, binding = 2,scalar) buffer MeshLayersBuffer { 
+    MeshLayerEntry meshLayers[]; 
+};
+layout(set = BINDLESS_SET, binding = 3,scalar) buffer MaterialsBuffer { 
+    MaterialEntry materials[]; 
+};
+layout (set = BINDLESS_SET, binding = 4) uniform sampler2D allTextures[];
+
+
+vec2 GetVec2(int index, int bufferID, int byteOffset) {
+	int elementOffset = byteOffset / 8;
+	return vec2Buffers[bufferID].data[elementOffset + index];
+};
+
+vec3 GetVec3(int index, int bufferID, int byteOffset) {
+	int elementOffset = byteOffset / 4; //Really we're using the float buffer...
+
+	index *= 3;
+	return vec3(
+		floatBuffers[bufferID].data[(elementOffset + index) + 0],
+		floatBuffers[bufferID].data[(elementOffset + index) + 1],
+		floatBuffers[bufferID].data[(elementOffset + index) + 2] 
+	);
+}
+
+int GetInt(int primIndex, int bufferID, int byteOffset) {
+	int elementOffset = byteOffset / 4;
+	return intBuffers[bufferID].data[elementOffset + primIndex];
+};
+
+ivec3 GetIndices(int primIndex, int firstIndex, int bufferID, int byteOffset, int addBase) {
+	int elementOffset = byteOffset / 4;
+	elementOffset += (primIndex * 3) + firstIndex;
+
+	ivec3 indices;
+
+	indices[0] = intBuffers[bufferID].data[elementOffset + 0] + addBase;
+	indices[1] = intBuffers[bufferID].data[elementOffset + 1] + addBase;
+	indices[2] = intBuffers[bufferID].data[elementOffset + 2] + addBase;
+
+	return indices;
+};
+
+float Interpolate(float A, float B, float C, vec2 vw) {
+	return  A * (1.0f - vw.x - vw.y) +
+			B * vw.x +
+			C * vw.y;
+}
+
+vec2 Interpolate(vec2 A, vec2 B, vec2 C, vec2 vw) {
+	return  A * (1.0f - vw.x - vw.y) +
+			B * vw.x +
+			C * vw.y;
+}
+
+vec3 Interpolate(vec3 A, vec3 B, vec3 C, vec2 vw) {
+	return  A * (1.0f - vw.x - vw.y) +
+			B * vw.x +
+			C * vw.y;
+}
+
+vec4 Interpolate(vec4 A, vec4 B, vec4 C, vec2 vw) {
+	return  A * (1.0f - vw.x - vw.y) +
+			B * vw.x +
+			C * vw.y;
+}
+
+#endif
