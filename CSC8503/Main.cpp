@@ -38,20 +38,7 @@ void DisplayPathfinding() {
 }
 
 void TestStateMachine() {
-	StateMachine testMachine;
 
-	float time = 0.0f;
-
-	int state0 = testMachine.AddState([&](float dt, bool initState) { if (initState) { time = 10.0f; } std::cout << "In state 0!\n";  });
-	int state1 = testMachine.AddState([&](float dt, bool initState) { if (initState) { time = 10.0f; } std::cout << "In state 1!\n";  });
-
-	testMachine.AddTransition(state0, state1, [&]()-> bool {return (time < 0.0f) ? true : false;  });
-	testMachine.AddTransition(state1, state0, [&]()-> bool {return (time < 0.0f) ? true : false;  });
-
-	for (int i = 0; i < 100; ++i) {
-		time -= 1.0f;
-		testMachine.Update(0.0f);
-	}
 }
 
 /*
@@ -106,7 +93,7 @@ int main() {
 	c->MapAxis(3, "XLook");
 	c->MapAxis(4, "YLook");
 
-#define GAME NetworkedGame
+#define GAME TutorialGame
 
 	std::unique_ptr<GAME> game = std::make_unique<GAME>(*world, *renderer, *physics, *c);
 
