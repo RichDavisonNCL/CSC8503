@@ -1,0 +1,9 @@
+layout(location = 0) in vec3    position;
+layout(location = 1) in vec4    colour;
+layout(location = 2) in vec2    texCoord;
+layout(location = 3) in vec3    normal;
+layout(location = 4) in vec3    tangent;
+layout(location = 5) in vec4    jointWeights;
+layout(location = 6) in ivec4   jointIndices;
+layout(location = 7) in vec4    generalVec4;
+layout(location = 8) in int     generalInteger;

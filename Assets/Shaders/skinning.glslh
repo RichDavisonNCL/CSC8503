@@ -1,0 +1,20 @@
+
+layout (std140, binding = 0) uniform Joints {
+    mat4 joints[64];
+};
+
+void SkinVertex(vec3 inPos, vec3 inNormal, out vec3 outPos, out vec3 outNorm) {
+	vec4 skinnedPos		= vec4(0,0,0, 1);
+	vec4 skinnedNormal	= vec4(0,0,0, 0);
+
+	for (int i = 0; i < 4; ++i) {
+        int     jointIndex  = jointIndices[i];
+        float   jointWeight = jointWeights[i];
+
+        skinnedPos		+= joints[jointIndex] * vec4(inPos,1) * jointWeight;
+		skinnedNormal	+= joints[jointIndex] * vec4(inNormal,0) * jointWeight;
+    }
+
+	outPos	= skinnedPos.xyz;
+	outNorm = skinnedNormal.xyz;
+}
