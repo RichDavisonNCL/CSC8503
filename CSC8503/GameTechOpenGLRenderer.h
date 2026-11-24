@@ -55,10 +55,11 @@ namespace NCL {
 
 			std::vector<const RenderObject*> activeOpaqueObjects;
 			std::vector<const RenderObject*> activeTransparentObjects;
+			std::vector<const RenderObject*> activeGLTFObjects;
 
-
-			static void OpaqueRenderObject(GameTechOpenGLRenderer* renderer, const RenderObject* o);
-			static void TransparentRenderObject(GameTechOpenGLRenderer* renderer, const RenderObject* o);
+			static void RenderOpaqueObject(GameTechOpenGLRenderer* renderer, const RenderObject* o);
+			static void RenderGLTFObject(GameTechOpenGLRenderer* renderer, const RenderObject* o);
+			static void RenderTransparentObject(GameTechOpenGLRenderer* renderer, const RenderObject* o);
 
 			OGLShader*  debugShader;
 			OGLShader*  skyboxShader;

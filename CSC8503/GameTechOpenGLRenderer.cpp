@@ -6,6 +6,8 @@
 #include "TextureLoader.h"
 #include "MshLoader.h"
 
+#include "OGLBuffer.h"
+
 #include "Debug.h"
 
 #include "../GLTFLoader/GLTFLoader.h"
@@ -144,8 +146,9 @@ void GameTechOpenGLRenderer::RenderFrame() {
 	ShadowMapPass();
 	SkyboxPass();
 
-	SceneDrawPass(activeOpaqueObjects, &OpaqueRenderObject, false, true);
-	SceneDrawPass(activeTransparentObjects, TransparentRenderObject, true, true);
+	SceneDrawPass(activeOpaqueObjects, &RenderOpaqueObject, false, true);
+	SceneDrawPass(activeGLTFObjects, &RenderGLTFObject, false, true);
+	SceneDrawPass(activeTransparentObjects, RenderTransparentObject, true, true);
 
 	glDisable(GL_CULL_FACE); //Todo - text indices are going the wrong way...
 	glDisable(GL_BLEND);
@@ -161,19 +164,33 @@ void GameTechOpenGLRenderer::RenderFrame() {
 void GameTechOpenGLRenderer::BuildObjectList() {
 	activeOpaqueObjects.clear();
 	activeTransparentObjects.clear();
+	activeGLTFObjects.clear();
 
 	gameWorld.OperateOnContents(
 		[&](GameObject* o) {
 			if (o->IsActive()) {
-				const RenderObject* g = o->GetRenderObject();
+				RenderObject* g = o->GetRenderObject();
 
 				GameTechMaterial m = g->GetMaterial();
 
 				if (m.type == MaterialType::Opaque) {
 					activeOpaqueObjects.emplace_back(g);
 				}
-				else {
+				else if(m.type == MaterialType::Transparent) {
 					activeTransparentObjects.emplace_back(g);
+				}
+				else {
+					activeGLTFObjects.emplace_back(g);
+				}
+				if (!g->GetSkeleton().empty()) { //Oh no, we've got a skeleton in our closet!
+					StructuredOGLBuffer<Matrix4>* b = (StructuredOGLBuffer<Matrix4>*)g->GetGPUBuffer();
+
+					if (b == nullptr) {
+						b = new StructuredOGLBuffer<Matrix4>(g->GetSkeleton().size());
+						g->SetGPUBuffer(b);
+					}
+					memcpy(b->elements, g->GetSkeleton().data(), sizeof(Matrix4) * g->GetSkeleton().size());
+					b->GPUSync();
 				}
 			}
 		}
@@ -193,7 +210,9 @@ void GameTechOpenGLRenderer::ShadowMapPass() {
 	glCullFace(GL_FRONT);
 
 	BindShader(*shadowShader);
-	int mvpLocation = glGetUniformLocation(shadowShader->GetProgramID(), "mvpMatrix");
+
+	int mvpLocation			= glGetUniformLocation(shadowShader->GetProgramID(), "mvpMatrix");
+	const int animLocation	= glGetUniformLocation(shadowShader->GetProgramID(), "hasAnim");
 
 	Matrix4 shadowViewMatrix = Matrix::View(gameWorld.GetSunPosition(), Vector3(0, 0, 0), Vector3(0, 1, 0));
 	Matrix4 shadowProjMatrix = Matrix::Perspective(100.0f, 500.0f, 1, 45.0f);
@@ -207,7 +226,23 @@ void GameTechOpenGLRenderer::ShadowMapPass() {
 		Matrix4 mvpMatrix	= mvMatrix * modelMatrix;
 		glUniformMatrix4fv(mvpLocation, 1, false, (float*)&mvpMatrix);
 
-		OpaqueRenderObject(this, i);
+		if (!(*i).GetSkeleton().empty()) {
+			OGLBuffer* joints = (OGLBuffer*)(*i).GetGPUBuffer();
+			BindBufferAsUBO(*joints, 0);
+			glUniform1i(animLocation, 1);
+		}
+		else {
+			glUniform1i(animLocation, 0);
+		}
+
+		RenderOpaqueObject(this, i);
+	}
+	for (const auto& i : activeGLTFObjects) {
+		Matrix4 modelMatrix = (*i).GetTransform().GetMatrix();
+		Matrix4 mvpMatrix = mvMatrix * modelMatrix;
+		glUniformMatrix4fv(mvpLocation, 1, false, (float*)&mvpMatrix);
+
+		RenderGLTFObject(this, i);
 	}
 
 	glViewport(0, 0, windowSize.x, windowSize.y);
@@ -247,7 +282,7 @@ void GameTechOpenGLRenderer::SkyboxPass() {
 	glEnable(GL_DEPTH_TEST);
 }
 
-void GameTechOpenGLRenderer::OpaqueRenderObject(GameTechOpenGLRenderer* renderer, const RenderObject* o) {
+void GameTechOpenGLRenderer::RenderGLTFObject(GameTechOpenGLRenderer* renderer, const RenderObject* o) {
 	if (const GLTFRenderObject* gltf = dynamic_cast<const GLTFRenderObject*>(o)) {
 		//Oh dear. If you look very carefully, you'll be able to spot where I have hacked
 		//in support for rendering GLTF files.
@@ -281,16 +316,18 @@ void GameTechOpenGLRenderer::OpaqueRenderObject(GameTechOpenGLRenderer* renderer
 			}
 		}
 	}
-	else {
-		renderer->BindMesh(*(OGLMesh*)(*o).GetMesh());
-		int layerCount = (*o).GetMesh()->GetSubMeshCount();
-		for (int i = 0; i < layerCount; ++i) {
-			renderer->DrawBoundMesh(i);
-		}
+}
+
+
+void GameTechOpenGLRenderer::RenderOpaqueObject(GameTechOpenGLRenderer* renderer, const RenderObject* o) {
+	renderer->BindMesh(*(OGLMesh*)(*o).GetMesh());
+	int layerCount = (*o).GetMesh()->GetSubMeshCount();
+	for (int i = 0; i < layerCount; ++i) {
+		renderer->DrawBoundMesh(i);
 	}
 }
 
-void GameTechOpenGLRenderer::TransparentRenderObject(GameTechOpenGLRenderer* renderer, const RenderObject* o) {
+void GameTechOpenGLRenderer::RenderTransparentObject(GameTechOpenGLRenderer* renderer, const RenderObject* o) {
 	renderer->BindMesh(*(OGLMesh*)(*o).GetMesh());
 	int layerCount = (*o).GetMesh()->GetSubMeshCount();
 
@@ -326,6 +363,8 @@ void GameTechOpenGLRenderer::SceneDrawPass(const std::vector<const RenderObject*
 	const int lightRadiusLocation = glGetUniformLocation(program, "lightRadius");
 	const int shadowTexLocation = glGetUniformLocation(program, "shadowTex");
 	const int cameraLocation = glGetUniformLocation(program, "cameraPos");
+
+	const int animLocation = glGetUniformLocation(program, "hasAnim");
 
 	//TODO - PUT IN FUNCTION
 	glActiveTexture(GL_TEXTURE0 + 1);
@@ -382,6 +421,15 @@ void GameTechOpenGLRenderer::SceneDrawPass(const std::vector<const RenderObject*
 		}
 		else {
 			glUniform1i(hasVColLocation, 0);
+		}
+
+		if (!(*i).GetSkeleton().empty()) {
+			OGLBuffer* joints = (OGLBuffer*)(*i).GetGPUBuffer();
+			BindBufferAsUBO(*joints, 0);
+			glUniform1i(animLocation, 1);
+		}
+		else {
+			glUniform1i(animLocation, 0);
 		}
 
 		glUniform1i(hasTexLocation, mat.diffuseTex ? 1 : 0);

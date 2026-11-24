@@ -362,6 +362,31 @@ GameObject* TutorialGame::AddPlayerToWorld(const Vector3& position) {
 	float meshSize = 2.0f;
 	float inverseMass = 0.5f;
 
+	GameObject* player = new GameObject();
+	SphereVolume* volume = new SphereVolume(1.0f);
+
+	player->SetBoundingVolume(volume);
+
+	player->GetTransform()
+		.SetScale(Vector3(meshSize, meshSize, meshSize))
+		.SetPosition(position);
+
+	player->SetRenderObject(new GLTFRenderObject(player->GetTransform(), milkTruck));
+
+	player->SetPhysicsObject(new PhysicsObject(player->GetTransform(), player->GetBoundingVolume()));
+
+	player->GetPhysicsObject()->SetInverseMass(inverseMass);
+	player->GetPhysicsObject()->InitSphereInertia();
+
+	world.AddGameObject(player);
+
+	return player;
+}
+
+GameObject* TutorialGame::AddCharacterToWorld(const Vector3& position) {
+	float meshSize = 2.0f;
+	float inverseMass = 0.5f;
+
 	GameObject* character = new GameObject();
 	SphereVolume* volume = new SphereVolume(1.0f);
 
@@ -371,19 +396,22 @@ GameObject* TutorialGame::AddPlayerToWorld(const Vector3& position) {
 		.SetScale(Vector3(meshSize, meshSize, meshSize))
 		.SetPosition(position);
 
-	character->SetRenderObject(new GLTFRenderObject(character->GetTransform(), milkTruck));
+	character->SetRenderObject(new RenderObject(character->GetTransform(), enemyMesh, enemyMaterial));
 
 	character->SetPhysicsObject(new PhysicsObject(character->GetTransform(), character->GetBoundingVolume()));
 
 	character->GetPhysicsObject()->SetInverseMass(inverseMass);
 	character->GetPhysicsObject()->InitSphereInertia();
 
+	character->GetRenderObject()->SetAnimation(*enemyAnim);
+
 	world.AddGameObject(character);
 
 	return character;
 }
 
-GameObject* TutorialGame::AddEnemyToWorld(const Vector3& position) {
+
+GameObject* TutorialGame::AddCarToWorld(const Vector3& position) {
 	float meshSize = 0.025f;
 	float inverseMass = 0.5f;
 
@@ -402,8 +430,6 @@ GameObject* TutorialGame::AddEnemyToWorld(const Vector3& position) {
 
 	character->GetPhysicsObject()->SetInverseMass(inverseMass);
 	character->GetPhysicsObject()->InitSphereInertia();
-
-	character->GetRenderObject()->SetAnimation(*enemyAnim);
 
 	world.AddGameObject(character);
 
@@ -436,8 +462,9 @@ void TutorialGame::InitDefaultFloor() {
 
 void TutorialGame::InitGameExamples() {
 	AddPlayerToWorld(Vector3(0, 5, 0));
-	AddEnemyToWorld(Vector3(5, 5, 0));
-	AddBonusToWorld(Vector3(10, 5, 0));
+	AddCharacterToWorld(Vector3(5, 5, 0));
+	AddCarToWorld(Vector3(10, 5, 0));
+	AddBonusToWorld(Vector3(15, 5, 0));
 }
 
 void TutorialGame::InitSphereGridWorld(int numRows, int numCols, float rowSpacing, float colSpacing, float radius) {
@@ -544,7 +571,7 @@ bool TutorialGame::SelectObject() {
 		}
 	}
 	if (inSelectionMode) {
-		//Debug::Print("Press Q to change to camera mode!", Vector2(5, 85));
+		Debug::Print("Press Q to change to camera mode!", Vector2(5, 85));
 
 		if (Window::GetMouse()->ButtonDown(NCL::MouseButtons::Left)) {
 			if (selectionObject) {	//set colour to deselected;
@@ -590,7 +617,7 @@ line - after the third, they'll be able to twist under torque aswell.
 */
 
 void TutorialGame::MoveSelectedObject() {
-	//Debug::Print("Click Force:" + std::to_string(forceMagnitude), Vector2(5, 90));
+	Debug::Print("Click Force:" + std::to_string(forceMagnitude), Vector2(5, 90));
 	forceMagnitude += Window::GetMouse()->GetWheelMovement() * 100.0f;
 
 	if (!selectionObject) {
