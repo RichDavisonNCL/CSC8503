@@ -12,6 +12,7 @@
 #include "../VKQuick/VMAMemoryManager.h"
 
 #include "../GLTFLoader/GLTFLoader.h"
+#include "../CSC8503CoreClasses/GLTFRenderObject.h"
 
 #include "../VulkanRendering/VulkanTutorial.h"
 
@@ -51,6 +52,8 @@ GameTechVulkanRenderer::GameTechVulkanRenderer(GameWorld& world) : gameWorld(wor
 	vkInit.defaultDescriptorPoolFlags = vk::DescriptorPoolCreateFlagBits::eUpdateAfterBindEXT;
 	vkInit.defaultDescriptorPoolImageCount = _TEXCOUNT;
 
+	vkInit.idealPresentMode = vk::PresentModeKHR::eMailbox;
+
 #ifdef _WIN32
 	Win32Code::Win32Window* hostWindow = (Win32Code::Win32Window*)Window::GetWindow();
 	vkInit.win32Handle		= hostWindow->GetHandle();
@@ -78,6 +81,12 @@ GameTechVulkanRenderer::GameTechVulkanRenderer(GameWorld& world) : gameWorld(wor
 	GLTFLoader::SetTextureConstructionFunction(
 		[&](std::string& input) ->  SharedTexture {
 			VulkanTexture* texture = new VulkanTexture(*(LoadTextureInternal(input).release()));
+
+			texture->SetAssetID(loadedTextures.size());
+
+			FrameContext const& context = vkQuick->GetFrameContext();
+			WriteCombinedImageDescriptor(context.device, *objectTextureDescriptor, 0, (int)loadedTextures.size(), texture->GetTex().GetDefaultView(), *defaultSampler);
+			loadedTextures.emplace_back(texture);
 			return std::shared_ptr<Texture>(texture);
 		}
 	);
@@ -344,11 +353,11 @@ void GameTechVulkanRenderer::RenderFrame(float dt) {
 		
 		VKQuick::DynamicRenderBuilder(context.cmdBuffer)
 		.WithDepthAttachment({
-			.imageView = *shadowMap,
-			.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
-			.loadOp = vk::AttachmentLoadOp::eClear,
-			.clearValue = vk::ClearDepthStencilValue(1.0f, ~0)
-			})
+			.imageView		= *shadowMap,
+			.imageLayout	= vk::ImageLayout::eDepthAttachmentOptimal,
+			.loadOp			= vk::AttachmentLoadOp::eClear,
+			.clearValue		= vk::ClearDepthStencilValue(1.0f, ~0)
+		})
 		.WithRenderArea(shadowScissor)
 		.BeginRendering();
 
@@ -356,7 +365,7 @@ void GameTechVulkanRenderer::RenderFrame(float dt) {
 		cmdBuffer.setScissor( 0, 1, &shadowScissor);
 
 		RenderSceneObjects(shadowPipeline, cmdBuffer); //Draw the shadow map
-
+		RenderGLTFObjects(shadowPipeline, cmdBuffer);
 		cmdBuffer.endRendering();
 	}
 
@@ -367,6 +376,7 @@ void GameTechVulkanRenderer::RenderFrame(float dt) {
 
 	RenderSkybox(cmdBuffer);
 	RenderSceneObjects(scenePipeline, cmdBuffer); //Draw the main scene
+	RenderGLTFObjects(scenePipeline, cmdBuffer);
 
 	UpdateDebugData();
 	RenderDebugLines(cmdBuffer);
@@ -386,46 +396,76 @@ void GameTechVulkanRenderer::RenderFrame(float dt) {
 void GameTechVulkanRenderer::UpdateObjectList() {
 	activeObjects.clear();
 
-	int objectCount = 0;
-
-	gameWorld.OperateOnContents(
-		[&](GameObject* o) {
-			if (o->IsActive()) {
-				objectCount++;
-			}
-		}
-	);
-
-	VulkanMesh* pipeMesh = nullptr;
-	int at = 0;
 	gameWorld.OperateOnContents(
 		[&](GameObject* o) {
 			if (o->IsActive()) {
 				RenderObject* g = o->GetRenderObject();
 				if (g) {
 					activeObjects.emplace_back(g);
-
-					ObjectState state;
-					state.modelMatrix = g->GetTransform().GetMatrix();
-					state.colour = g->GetColour();
-					state.index[0] = 0;
-
-					GameTechMaterial mat = g->GetMaterial();
-
-
-					if (g->GetMesh()) {
-						pipeMesh = (VulkanMesh*)g->GetMesh();
-					}
-					if (mat.diffuseTex) {
-						state.index[0] = mat.diffuseTex->GetAssetID();
-					}
-					currentFrame->WriteData<ObjectState>(state);
-					currentFrame->debugLinesOffset += sizeof(ObjectState);
-					at++;
 				}
 			}
 		}
 	);
+	std::sort(activeObjects.begin(), activeObjects.end(),
+		[](const RenderObject* a, const RenderObject* b)
+		{
+			return (int)a->GetMaterial().type < (int)b->GetMaterial().type;
+		}
+	);
+
+	VulkanMesh* pipeMesh = nullptr;
+	int at = 0;
+
+	for (const auto& r : activeObjects) {
+			ObjectState state;
+			state.modelMatrix = r->GetTransform().GetMatrix();
+			state.colour = r->GetColour();
+			state.index[0] = 0;
+
+			GameTechMaterial mat = r->GetMaterial();
+
+			if (r->GetMesh()) {
+				pipeMesh = (VulkanMesh*)r->GetMesh();
+			}
+			if (mat.diffuseTex) {
+				state.index[0] = mat.diffuseTex->GetAssetID();
+			}
+			if (const GLTFRenderObject* gltf = dynamic_cast<const GLTFRenderObject*>(r)) {
+				//We'll write a state for every node of the scene graph...
+				Matrix4 baseModelMat = state.modelMatrix;
+				GLTFScene* s = gltf->GetScene();
+				for (auto& node : s->sceneNodes) {
+					if (node.meshID >= 0) {
+						state.modelMatrix = baseModelMat * node.worldMatrix;
+
+						VulkanMesh* m = (VulkanMesh*)s->meshes[node.meshID].get();
+
+						for (int ml = 0; ml < m->GetSubMeshCount(); ++ml) {
+							auto mat		= s->meshMaterials[node.meshID];
+							auto matLayer	= s->materials[mat.layers[ml]];
+
+							if (matLayer.albedo != -1) {
+								VulkanTexture* tex = (VulkanTexture*)s->textures[matLayer.albedo].get();
+
+								state.index[0] = tex->GetAssetID();
+							}
+							else {
+								state.index[0] = 0;
+							}
+
+							currentFrame->WriteData<ObjectState>(state);
+							currentFrame->debugLinesOffset += sizeof(ObjectState);
+						}
+					}
+				}
+			}
+			else {
+				currentFrame->WriteData<ObjectState>(state);
+				currentFrame->debugLinesOffset += sizeof(ObjectState);
+				at++;
+			}
+
+	}
 	if (pipeMesh && !scenePipeline.pipeline) {
 		BuildScenePipelines(pipeMesh);
 	}
@@ -465,6 +505,12 @@ void GameTechVulkanRenderer::UpdateDebugData() {
 	}
 }
 
+void GameTechVulkanRenderer::RenderGLTFObjects(VKQuick::Pipeline& pipe, vk::CommandBuffer cmds) {
+	if (activeGLTFs.empty()) {
+		return;
+	}
+}
+
 void GameTechVulkanRenderer::RenderSceneObjects(VKQuick::Pipeline& pipe, vk::CommandBuffer cmds) {
 	int index = 0;
 	if (activeObjects.empty()) {
@@ -479,7 +525,9 @@ void GameTechVulkanRenderer::RenderSceneObjects(VKQuick::Pipeline& pipe, vk::Com
 	int count = 1;
 	int startingIndex = 0;
 
-	for (int i = 1; i < activeObjects.size(); ++i) {
+	int i = 1;
+
+	for (; i < activeObjects.size(); ++i) {
 		VulkanMesh* objectMesh = (VulkanMesh*)activeObjects[i]->GetMesh();
 		int increment = 1;
 		//The new mesh is different than previous meshes, flush out the old list
@@ -488,22 +536,45 @@ void GameTechVulkanRenderer::RenderSceneObjects(VKQuick::Pipeline& pipe, vk::Com
 
 			activeMesh->GetMesh()->BindToCommandBuffer(cmds);
 			activeMesh->GetMesh()->Draw(cmds, count);
-
-			//SubmitDrawCall(*activeMesh, cmds, count);
 			activeMesh = objectMesh;
 			count = 1;
 			startingIndex = i;
 			increment = 0;
 		}
-		if (i == activeObjects.size()-1) {
+		if (!activeMesh) {
+			break;
+		}
+		if (i == activeObjects.size()-1 && activeMesh) {
 			cmds.pushConstants(*pipe.layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(uint32_t), (void*)&startingIndex);
-			//SubmitDrawCall(*objectMesh, cmds, count);
-
 			activeMesh->GetMesh()->BindToCommandBuffer(cmds);
 			activeMesh->GetMesh()->Draw(cmds, count);
 		}
 		else {
 			count += increment;
+		}
+	}
+	//Any remaining objects will be GLTFs...
+	startingIndex = i;
+	for (; i < activeObjects.size(); ++i) {
+		if (const GLTFRenderObject* gltf = dynamic_cast<const GLTFRenderObject*>(activeObjects[i])) {
+			GLTFScene* s = gltf->GetScene();
+
+			for (auto& node : s->sceneNodes) {
+				if (node.meshID >= 0) {
+					cmds.pushConstants(*pipe.layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(uint32_t), (void*)&startingIndex);
+					VulkanMesh* m = (VulkanMesh*)s->meshes[node.meshID].get();
+
+					m->GetMesh()->BindToCommandBuffer(cmds);
+
+					int layerCount = m->GetSubMeshCount();
+
+					for (int i = 0; i < layerCount; ++i) {
+						cmds.pushConstants(*pipe.layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(uint32_t), (void*)&startingIndex);
+						m->GetMesh()->DrawLayer(i, cmds, 1);
+						startingIndex++;
+					}
+				}
+			}
 		}
 	}
 }
@@ -597,6 +668,19 @@ NCL::Rendering::Texture* GameTechVulkanRenderer::LoadTexture(const std::string& 
 	loadedTextures.emplace_back(vkTex);
 	
 	return vkTex;
+}
+
+bool GameTechVulkanRenderer::LoadGLTF(const std::string& filename, NCL::Rendering::GLTFScene& intoScene)  {
+	if (!GLTFLoader::Load(filename, intoScene)) {
+		return false;
+	}
+
+	for (const auto& m : intoScene.meshes) {
+		VulkanMesh* loadedMesh = (VulkanMesh*)m.get();
+		UploadMeshWait(*loadedMesh);
+	}
+
+	return true;
 }
 
 VKQuick::UniqueTexture GameTechVulkanRenderer::LoadTextureInternal(const std::string& filename) {

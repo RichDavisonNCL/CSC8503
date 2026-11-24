@@ -19,18 +19,19 @@ namespace NCL {
 			GameTechOpenGLRenderer(GameWorld& world);
 			~GameTechOpenGLRenderer();
 
-			Mesh*		LoadMesh(const std::string& name);
-			Texture*	LoadTexture(const std::string& name);
-			Shader*		LoadShader(const std::string& vertex, const std::string& fragment);
+			Mesh*		LoadMesh(const std::string& name) override;
+			Texture*	LoadTexture(const std::string& name) override;
 
-			bool LoadGLTF(const std::string& filename, NCL::Rendering::GLTFScene& intoScene);
+
+			bool LoadGLTF(const std::string& filename, NCL::Rendering::GLTFScene& intoScene) override;
 
 			void RenderFrame(float dt)	override {
 				Update(dt);
 				Render();
 			}
 
-		protected:
+		protected:			
+			Shader*		LoadShader(const std::string& vertex, const std::string& fragment);
 			void DebugLinePass();
 			void DebugTextPass();
 

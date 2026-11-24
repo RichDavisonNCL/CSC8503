@@ -11,6 +11,7 @@
 
 namespace NCL::CSC8503 {
 	class RenderObject;
+	class GLTFRenderObject;
 
 	using namespace Vulkan;
 	class GameTechVulkanRenderer : public GameTechRendererInterface
@@ -21,6 +22,7 @@ namespace NCL::CSC8503 {
 
 		NCL::Rendering::Mesh*		LoadMesh(const std::string& name)		override;
 		NCL::Rendering::Texture*	LoadTexture(const std::string& name)	override;
+		bool LoadGLTF(const std::string& filename, NCL::Rendering::GLTFScene& intoScene) override;
 
 		void RenderFrame(float dt) override;
 
@@ -110,6 +112,7 @@ namespace NCL::CSC8503 {
 		void UpdateDebugData();
 		 
 		void RenderSceneObjects(VKQuick::Pipeline& pipe, vk::CommandBuffer cmds);
+		void RenderGLTFObjects(VKQuick::Pipeline& pipe, vk::CommandBuffer cmds);
 		void RenderSkybox(vk::CommandBuffer cmds);
 		void RenderDebugLines(vk::CommandBuffer cmds);
 		void RenderDebugText(vk::CommandBuffer cmds);
@@ -120,6 +123,7 @@ namespace NCL::CSC8503 {
 
 		GameWorld& gameWorld;
 		std::vector<const RenderObject*> activeObjects;
+		std::vector<const GLTFRenderObject*> activeGLTFs;
 		int currentFrameIndex;
 
 		VKQuick::Instance*		vkQuick;
