@@ -78,6 +78,8 @@ namespace NCL {
 
 
 
+
+
 			//Debug data storage things
 			std::vector<Vector3> debugLineData;
 
@@ -94,6 +96,9 @@ namespace NCL {
 			GLuint textColourVBO	= 0;
 			GLuint textTexVBO		= 0;
 			size_t textCount		= 0;
+
+			std::map<std::string, size_t>		textureLookup;
+			std::vector<SharedOGLTexture>		textureList;
 		};
 	}
 }

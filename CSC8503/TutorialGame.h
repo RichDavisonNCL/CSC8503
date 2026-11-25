@@ -50,12 +50,10 @@ namespace NCL {
 			GameObject* AddCubeToWorld(const Vector3& position, Vector3 dimensions, float inverseMass = 10.0f);
 
 			GameObject* AddPlayerToWorld(const Vector3& position);
+			GameObject* AddPlayerVehicleToWorld(const Vector3& position);
 			
-			GameObject* AddCharacterToWorld(const Vector3& position);
-			GameObject* AddCarToWorld(const Vector3& position);
-
-
-			GameObject* AddBonusToWorld(const Vector3& position);
+			GameObject* AddEnemyToWorld(const Vector3& position);
+			GameObject* AddEnemyVehicleToWorld(const Vector3& position);
 
 			GameWorld&					world;
 			GameTechRendererInterface&	renderer;
@@ -76,16 +74,14 @@ namespace NCL {
 			Rendering::Texture* defaultTex	= nullptr;
 			Rendering::Texture* checkerTex	= nullptr;
 			Rendering::Texture* glassTex	= nullptr;
-			Rendering::Texture* enemyTex	= nullptr;
 
 			//Coursework Meshes
-			Rendering::Mesh* catMesh		= nullptr;
-			Rendering::Mesh* kittenMesh		= nullptr;
-			Rendering::Mesh* enemyMesh		= nullptr;
-			Rendering::Mesh* bonusMesh		= nullptr;
+			Rendering::GLTFScene playerChar;
+			Rendering::GLTFScene playerVehicle;
 
-			Rendering::GLTFScene milkTruck;
-			Rendering::GLTFScene raceCar;
+			Rendering::Mesh* enemyMesh		= nullptr;
+			Rendering::GLTFScene enemyVehicle;
+
 
 
 			GameTechMaterial checkerMaterial;

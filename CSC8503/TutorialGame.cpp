@@ -30,22 +30,22 @@ TutorialGame::TutorialGame(GameWorld& inWorld, GameTechRendererInterface& inRend
 
 	cubeMesh	= renderer.LoadMesh("cube.msh");
 	sphereMesh	= renderer.LoadMesh("sphere.msh");
-	catMesh		= renderer.LoadMesh("ORIGAMI_Chat.msh");
-	kittenMesh	= renderer.LoadMesh("Kitten.msh");
-
-	enemyMesh	= renderer.LoadMesh("Role_T.msh");
-	enemyAnim	=	 new MeshAnimation("Role_T.anm");
-
-	bonusMesh	= renderer.LoadMesh("19463_Kitten_Head_v1.msh");
 	capsuleMesh = renderer.LoadMesh("capsule.msh");
 
 	defaultTex	= renderer.LoadTexture("Default.png");
 	checkerTex	= renderer.LoadTexture("checkerboard.png");
 	glassTex	= renderer.LoadTexture("stainedglass.png");
-	enemyTex	= renderer.LoadTexture("stainedglass.png");
 
-	renderer.LoadGLTF("CesiumMilkTruck/CesiumMilkTruck.glTF", milkTruck);
-	renderer.LoadGLTF("car/sportcar.017.gltf", raceCar);
+
+	renderer.LoadGLTF("CesiumMan/CesiumMan.glTF", playerChar);
+	renderer.LoadGLTF("CesiumMilkTruck/CesiumMilkTruck.glTF", playerVehicle);
+
+	renderer.LoadGLTF("car/sportcar.017.gltf", enemyVehicle);
+	enemyMesh	= renderer.LoadMesh("Role_T.msh");
+	enemyAnim	=	 new MeshAnimation("Role_T.anm");
+
+
+	renderer.LoadGLTF("car/sportcar.017.gltf", enemyVehicle);
 
 	checkerMaterial.type		= MaterialType::Opaque;
 	checkerMaterial.diffuseTex	= checkerTex;
@@ -54,7 +54,34 @@ TutorialGame::TutorialGame(GameWorld& inWorld, GameTechRendererInterface& inRend
 	glassMaterial.diffuseTex	= glassTex;
 
 	enemyMaterial.type			= MaterialType::Opaque;
-	enemyMaterial.diffuseTex	= glassTex;
+	//enemyMaterial.diffuseTex	= glassTex;
+
+	enemyMaterial.meshLayers.push_back(
+		{
+			.type = MaterialType::Opaque,
+			.diffuseTex = renderer.LoadTexture("/RealisticCharacter/role/hair.tga"),
+		}
+	);
+	enemyMaterial.meshLayers.push_back(
+		{
+			.type = MaterialType::Opaque,
+			.diffuseTex = renderer.LoadTexture("/RealisticCharacter/role/head.tga"),
+		}
+	);
+
+	enemyMaterial.meshLayers.push_back(
+		{
+			.type = MaterialType::Opaque,
+			.diffuseTex = renderer.LoadTexture("/RealisticCharacter/role/Body.tga"),
+		}
+	);
+
+	enemyMaterial.meshLayers.push_back(
+		{
+			.type = MaterialType::Opaque,
+			.diffuseTex = renderer.LoadTexture("/RealisticCharacter/weapon/weapon.tga"),
+		}
+	);
 
 	InitCamera();
 	InitWorld();
@@ -72,7 +99,6 @@ TutorialGame::~TutorialGame()	{
 	delete sphereMesh;
 
 	delete enemyMesh;
-	delete bonusMesh;
 }
 
 void TutorialGame::UpdateGame(float dt) {
@@ -276,7 +302,7 @@ void TutorialGame::InitWorld() {
 	world.ClearAndErase();
 	physics.Clear();
 
-	InitMixedGridWorld(10, 10, 3.5f, 3.5f);
+	//InitMixedGridWorld(10, 10, 3.5f, 3.5f);
 
 	InitGameExamples();	
 	InitDefaultFloor();	
@@ -359,6 +385,33 @@ GameObject* TutorialGame::AddCubeToWorld(const Vector3& position, Vector3 dimens
 }
 
 GameObject* TutorialGame::AddPlayerToWorld(const Vector3& position) {
+	float meshSize = 2.5f;
+	float inverseMass = 0.5f;
+
+	GameObject* character = new GameObject();
+
+	AABBVolume* volume = new AABBVolume(Vector3(0.3f, 0.9f, 0.3f) * meshSize);
+	character->SetBoundingVolume(volume);
+
+	character->GetTransform()
+		.SetScale(Vector3(meshSize, meshSize, meshSize))
+		.SetPosition(position);
+
+	character->SetRenderObject(new GLTFRenderObject(character->GetTransform(), playerChar));
+
+	character->SetPhysicsObject(new PhysicsObject(character->GetTransform(), character->GetBoundingVolume()));
+
+	character->GetRenderObject()->SetAnimation(*playerChar.animations[0]);
+
+	character->GetPhysicsObject()->SetInverseMass(inverseMass);
+	character->GetPhysicsObject()->InitSphereInertia();
+
+	world.AddGameObject(character);
+
+	return character;
+}
+
+GameObject* TutorialGame::AddPlayerVehicleToWorld(const Vector3& position) {
 	float meshSize = 2.0f;
 	float inverseMass = 0.5f;
 
@@ -371,7 +424,7 @@ GameObject* TutorialGame::AddPlayerToWorld(const Vector3& position) {
 		.SetScale(Vector3(meshSize, meshSize, meshSize))
 		.SetPosition(position);
 
-	player->SetRenderObject(new GLTFRenderObject(player->GetTransform(), milkTruck));
+	player->SetRenderObject(new GLTFRenderObject(player->GetTransform(), playerVehicle));
 
 	player->SetPhysicsObject(new PhysicsObject(player->GetTransform(), player->GetBoundingVolume()));
 
@@ -383,7 +436,7 @@ GameObject* TutorialGame::AddPlayerToWorld(const Vector3& position) {
 	return player;
 }
 
-GameObject* TutorialGame::AddCharacterToWorld(const Vector3& position) {
+GameObject* TutorialGame::AddEnemyToWorld(const Vector3& position) {
 	float meshSize = 2.0f;
 	float inverseMass = 0.5f;
 
@@ -411,7 +464,7 @@ GameObject* TutorialGame::AddCharacterToWorld(const Vector3& position) {
 }
 
 
-GameObject* TutorialGame::AddCarToWorld(const Vector3& position) {
+GameObject* TutorialGame::AddEnemyVehicleToWorld(const Vector3& position) {
 	float meshSize = 0.025f;
 	float inverseMass = 0.5f;
 
@@ -424,7 +477,7 @@ GameObject* TutorialGame::AddCarToWorld(const Vector3& position) {
 		.SetScale(Vector3(meshSize, meshSize, meshSize))
 		.SetPosition(position);
 
-	character->SetRenderObject(new GLTFRenderObject(character->GetTransform(), raceCar));
+	character->SetRenderObject(new GLTFRenderObject(character->GetTransform(), enemyVehicle));
 
 	character->SetPhysicsObject(new PhysicsObject(character->GetTransform(), character->GetBoundingVolume()));
 
@@ -436,35 +489,16 @@ GameObject* TutorialGame::AddCarToWorld(const Vector3& position) {
 	return character;
 }
 
-GameObject* TutorialGame::AddBonusToWorld(const Vector3& position) {
-	GameObject* apple = new GameObject();
-
-	SphereVolume* volume = new SphereVolume(0.5f);
-	apple->SetBoundingVolume(volume);
-	apple->GetTransform()
-		.SetScale(Vector3(2, 2, 2))
-		.SetPosition(position);
-
-	apple->SetRenderObject(new RenderObject(apple->GetTransform(), bonusMesh, glassMaterial));
-	apple->SetPhysicsObject(new PhysicsObject(apple->GetTransform(), apple->GetBoundingVolume()));
-
-	apple->GetPhysicsObject()->SetInverseMass(1.0f);
-	apple->GetPhysicsObject()->InitSphereInertia();
-
-	world.AddGameObject(apple);
-
-	return apple;
-}
-
 void TutorialGame::InitDefaultFloor() {
 	AddFloorToWorld(Vector3(0, -20, 0));
 }
 
 void TutorialGame::InitGameExamples() {
 	AddPlayerToWorld(Vector3(0, 5, 0));
-	AddCharacterToWorld(Vector3(5, 5, 0));
-	AddCarToWorld(Vector3(10, 5, 0));
-	AddBonusToWorld(Vector3(15, 5, 0));
+	AddPlayerVehicleToWorld(Vector3(15, 5, 0));
+
+	AddEnemyToWorld(Vector3(30, 5, 0));
+	AddEnemyVehicleToWorld(Vector3(45, 5, 0));
 }
 
 void TutorialGame::InitSphereGridWorld(int numRows, int numCols, float rowSpacing, float colSpacing, float radius) {

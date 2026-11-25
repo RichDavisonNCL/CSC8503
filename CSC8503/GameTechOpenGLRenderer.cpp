@@ -322,8 +322,22 @@ void GameTechOpenGLRenderer::RenderGLTFObject(GameTechOpenGLRenderer* renderer, 
 void GameTechOpenGLRenderer::RenderOpaqueObject(GameTechOpenGLRenderer* renderer, const RenderObject* o) {
 	renderer->BindMesh(*(OGLMesh*)(*o).GetMesh());
 	int layerCount = (*o).GetMesh()->GetSubMeshCount();
-	for (int i = 0; i < layerCount; ++i) {
-		renderer->DrawBoundMesh(i);
+
+	const GameTechMaterial& mat = o->GetMaterial();
+
+	if (mat.meshLayers.empty()) {
+		for (int i = 0; i < layerCount; ++i) {
+			renderer->DrawBoundMesh(i);
+		}
+	}
+	else {
+		for (int i = 0; i < layerCount; ++i) {
+			if (mat.meshLayers[i].diffuseTex) {
+				renderer->BindTextureToShader(*(OGLTexture*)mat.meshLayers[i].diffuseTex, "mainTex", 0);	
+			}
+			renderer->SendUniform("hasTexture", mat.meshLayers[i].diffuseTex ? 1 : 0);
+			renderer->DrawBoundMesh(i);
+		}
 	}
 }
 
@@ -331,13 +345,34 @@ void GameTechOpenGLRenderer::RenderTransparentObject(GameTechOpenGLRenderer* ren
 	renderer->BindMesh(*(OGLMesh*)(*o).GetMesh());
 	int layerCount = (*o).GetMesh()->GetSubMeshCount();
 
-	glCullFace(GL_FRONT);
-	for (int i = 0; i < layerCount; ++i) {
-		renderer->DrawBoundMesh(i);
+	const GameTechMaterial& mat = o->GetMaterial();
+	if (mat.meshLayers.empty()) {
+		glCullFace(GL_FRONT);
+		for (int i = 0; i < layerCount; ++i) {
+			renderer->DrawBoundMesh(i);
+		}
+		glCullFace(GL_BACK);
+		for (int i = 0; i < layerCount; ++i) {
+			renderer->DrawBoundMesh(i);
+		}
 	}
-	glCullFace(GL_BACK);
-	for (int i = 0; i < layerCount; ++i) {
-		renderer->DrawBoundMesh(i);
+	else {
+		glCullFace(GL_FRONT);
+		for (int i = 0; i < layerCount; ++i) {
+			if (mat.meshLayers[i].diffuseTex) {
+				renderer->BindTextureToShader(*(OGLTexture*)mat.meshLayers[i].diffuseTex, "mainTex", 0);
+			}
+			renderer->SendUniform("hasTexture", mat.meshLayers[i].diffuseTex ? 1 : 0);
+			renderer->DrawBoundMesh(i);
+		}
+		glCullFace(GL_BACK);
+		for (int i = 0; i < layerCount; ++i) {
+			if (mat.meshLayers[i].diffuseTex) {
+				renderer->BindTextureToShader(*(OGLTexture*)mat.meshLayers[i].diffuseTex, "mainTex", 0);
+			}
+			renderer->SendUniform("hasTexture", mat.meshLayers[i].diffuseTex ? 1 : 0);
+			renderer->DrawBoundMesh(i);
+		}
 	}
 }
 
@@ -401,7 +436,7 @@ void GameTechOpenGLRenderer::SceneDrawPass(const std::vector<const RenderObject*
 	}
 
 	for (const auto& i : list) {
-		GameTechMaterial mat = i->GetMaterial();
+		const GameTechMaterial& mat = i->GetMaterial();
 
 		if (mat.diffuseTex) {
 			BindTextureToShader(*(OGLTexture*)mat.diffuseTex, "mainTex", 0);
@@ -536,9 +571,17 @@ void GameTechOpenGLRenderer::DebugTextPass() {
 }
 
 Texture* GameTechOpenGLRenderer::LoadTexture(const std::string& name) {
-	UniqueOGLTexture t = OGLTexture::TextureFromFile(name);
+	auto hasTexture = textureLookup.find(name);
+	if (hasTexture != textureLookup.end()) {
+		return textureList[hasTexture->second].get();
+	}
 
-	return t.release();
+	SharedOGLTexture t = OGLTexture::TextureFromFile(name);
+
+	textureLookup.insert({ name, textureList.size() });
+	textureList.push_back(t);
+
+	return t.get();
 }
 
 Shader* GameTechOpenGLRenderer::LoadShader(const std::string& vertex, const std::string& fragment) {
