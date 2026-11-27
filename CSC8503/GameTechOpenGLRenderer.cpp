@@ -211,7 +211,9 @@ void GameTechOpenGLRenderer::ShadowMapPass() {
 
 	BindShader(*shadowShader);
 
-	int mvpLocation			= glGetUniformLocation(shadowShader->GetProgramID(), "mvpMatrix");
+	const int projLocation	= glGetUniformLocation(shadowShader->GetProgramID(), "projMatrix");
+	const int viewLocation	= glGetUniformLocation(shadowShader->GetProgramID(), "viewMatrix");
+	const int modelLocation = glGetUniformLocation(shadowShader->GetProgramID(), "modelMatrix");
 	const int animLocation	= glGetUniformLocation(shadowShader->GetProgramID(), "hasAnim");
 
 	Matrix4 shadowViewMatrix = Matrix::View(gameWorld.GetSunPosition(), Vector3(0, 0, 0), Vector3(0, 1, 0));
@@ -221,10 +223,16 @@ void GameTechOpenGLRenderer::ShadowMapPass() {
 
 	shadowMatrix = biasMatrix * mvMatrix; //we'll use this one later on
 
+	glUniformMatrix4fv(projLocation, 1, false, (float*)&shadowProjMatrix);
+	glUniformMatrix4fv(viewLocation, 1, false, (float*)&shadowViewMatrix);
+
 	for (const auto&i : activeOpaqueObjects) {
 		Matrix4 modelMatrix = (*i).GetTransform().GetMatrix();
-		Matrix4 mvpMatrix	= mvMatrix * modelMatrix;
-		glUniformMatrix4fv(mvpLocation, 1, false, (float*)&mvpMatrix);
+		Matrix4 offset		= Matrix::Translation((*i).GetDrawOffset());
+
+		Matrix4 offsetModel = modelMatrix * offset;
+
+		glUniformMatrix4fv(modelLocation, 1, false, (float*)&offsetModel);
 
 		if (!(*i).GetSkeleton().empty()) {
 			OGLBuffer* joints = (OGLBuffer*)(*i).GetGPUBuffer();
@@ -240,9 +248,19 @@ void GameTechOpenGLRenderer::ShadowMapPass() {
 	for (const auto& i : activeGLTFObjects) {
 		Matrix4 modelMatrix = (*i).GetTransform().GetMatrix();
 		Matrix4 offset = Matrix::Translation((*i).GetDrawOffset());
-		Matrix4 mvpMatrix = mvMatrix * modelMatrix * offset;
-		glUniformMatrix4fv(mvpLocation, 1, false, (float*)&mvpMatrix);
 
+		Matrix4 offsetModel = modelMatrix * offset;
+
+		glUniformMatrix4fv(modelLocation, 1, false, (float*)&offsetModel);
+
+		if (!(*i).GetSkeleton().empty()) {
+			OGLBuffer* joints = (OGLBuffer*)(*i).GetGPUBuffer();
+			BindBufferAsUBO(*joints, 0);
+			glUniform1i(animLocation, 1);
+		}
+		else {
+			glUniform1i(animLocation, 0);
+		}
 		RenderGLTFObject(this, i);
 	}
 
