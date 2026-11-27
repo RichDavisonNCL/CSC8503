@@ -239,7 +239,8 @@ void GameTechOpenGLRenderer::ShadowMapPass() {
 	}
 	for (const auto& i : activeGLTFObjects) {
 		Matrix4 modelMatrix = (*i).GetTransform().GetMatrix();
-		Matrix4 mvpMatrix = mvMatrix * modelMatrix;
+		Matrix4 offset = Matrix::Translation((*i).GetDrawOffset());
+		Matrix4 mvpMatrix = mvMatrix * modelMatrix * offset;
 		glUniformMatrix4fv(mvpLocation, 1, false, (float*)&mvpMatrix);
 
 		RenderGLTFObject(this, i);
@@ -293,8 +294,8 @@ void GameTechOpenGLRenderer::RenderGLTFObject(GameTechOpenGLRenderer* renderer, 
 				OGLMesh* m = (OGLMesh*)s->meshes[node.meshID].get();
 				//Absolutely fantastic...
 				Matrix4 modelMat = o->GetTransform().GetMatrix() * node.worldMatrix;
-
-				renderer->SendUniform("modelMatrix", modelMat);
+				Matrix4 offset = Matrix::Translation(o->GetDrawOffset());
+				renderer->SendUniform("modelMatrix", modelMat * offset);
 
 				renderer->BindMesh(*m);
 				int layerCount = m->GetSubMeshCount();
@@ -443,6 +444,9 @@ void GameTechOpenGLRenderer::SceneDrawPass(const std::vector<const RenderObject*
 		}
 
 		Matrix4 modelMatrix = (*i).GetTransform().GetMatrix();
+		Matrix4 offset = Matrix::Translation((*i).GetDrawOffset());
+		modelMatrix = modelMatrix * offset;
+
 		glUniformMatrix4fv(modelLocation, 1, false, (float*)&modelMatrix);
 
 		Matrix4 fullShadowMat = shadowMatrix * modelMatrix;
